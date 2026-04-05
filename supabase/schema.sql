@@ -1,0 +1,143 @@
+-- ============================================================
+-- 아현 재정 관리 시스템 — DB 스키마
+-- Supabase SQL Editor에서 실행
+-- ============================================================
+
+create extension if not exists pgcrypto;
+
+-- ============================================================
+-- 1. 예산 항목
+-- ============================================================
+create table if not exists public.budget_categories (
+  id            bigint generated always as identity primary key,
+  group_name    text not null check (group_name in ('목회', '양육', '사역', '행사')),
+  category_name text not null,
+  annual_budget numeric(14, 2) not null default 0,
+  created_at    timestamptz not null default now()
+);
+
+-- ============================================================
+-- 2. 청구 배치
+-- ============================================================
+create table if not exists public.claim_batches (
+  id                  bigint generated always as identity primary key,
+  year                int not null,
+  month               int not null check (month between 1 and 12),
+  submission_deadline timestamptz not null,
+  claim_date          date not null,
+  status              text not null default 'draft' check (status in ('draft', 'confirmed')),
+  total_amount        numeric(14, 2) not null default 0,
+  created_at          timestamptz not null default now(),
+  unique (year, month)
+);
+
+-- ============================================================
+-- 3. 영수증
+-- ============================================================
+create table if not exists public.receipts (
+  id                  bigint generated always as identity primary key,
+  submitter_name      text not null,
+  budget_category_id  bigint not null references public.budget_categories(id),
+  claim_batch_id      bigint references public.claim_batches(id),
+  amount              numeric(14, 2) not null check (amount > 0),
+  receipt_date        date not null,
+  submitted_at        timestamptz default now(),
+  vendor_name         text not null,
+  memo                text,
+  file_url            text not null,
+  file_path           text not null,
+  status              text not null default 'submitted' check (status in ('draft', 'submitted', 'approved')),
+  is_claimed          boolean not null default false,
+  created_at          timestamptz not null default now()
+);
+
+-- ============================================================
+-- 4. 예산 변동 이력
+-- ============================================================
+create table if not exists public.budget_transactions (
+  id                  bigint generated always as identity primary key,
+  budget_category_id  bigint not null references public.budget_categories(id),
+  transaction_type    text not null check (
+                        transaction_type in ('opening_budget', 'prior_claim', 'monthly_claim', 'adjustment')
+                      ),
+  amount              numeric(14, 2) not null,
+  transaction_date    date not null,
+  source_type         text not null check (
+                        source_type in ('receipt', 'migration', 'claim_batch', 'manual', 'system')
+                      ),
+  source_id           bigint,
+  memo                text,
+  created_at          timestamptz not null default now()
+);
+
+-- ============================================================
+-- 5. Storage 버킷
+-- ============================================================
+insert into storage.buckets (id, name, public)
+values ('receipts', 'receipts', true)
+on conflict (id) do nothing;
+
+-- ============================================================
+-- 6. RLS 설정
+-- ============================================================
+alter table public.budget_categories enable row level security;
+alter table public.claim_batches enable row level security;
+alter table public.receipts enable row level security;
+alter table public.budget_transactions enable row level security;
+
+create policy "public read categories" on public.budget_categories for select using (true);
+create policy "public insert receipts" on public.receipts for insert with check (true);
+create policy "public read receipts" on public.receipts for select using (true);
+create policy "public update receipts" on public.receipts for update using (true);
+create policy "public read claim batches" on public.claim_batches for select using (true);
+create policy "public insert claim batches" on public.claim_batches for insert with check (true);
+create policy "public update claim batches" on public.claim_batches for update using (true);
+create policy "public read budget transactions" on public.budget_transactions for select using (true);
+create policy "public insert budget transactions" on public.budget_transactions for insert with check (true);
+create policy "public upload receipt files" on storage.objects for insert with check (bucket_id = 'receipts');
+create policy "public read receipt files" on storage.objects for select using (bucket_id = 'receipts');
+
+-- ============================================================
+-- 7. 초기 예산 데이터 (2026년)
+-- ============================================================
+insert into public.budget_categories (group_name, category_name, annual_budget) values
+  -- 목회
+  ('목회', '행정물품비',   1700000),
+  ('목회', '심방비',       4800000),
+  ('목회', '목회지원비',   1200000),
+  ('목회', '예배준비비',   1500000),
+  -- 양육
+  ('양육', '리더장 지원비',  1200000),
+  ('양육', '리더 모임',      2000000),
+  ('양육', '소그룹 운영비',  8150000),
+  ('양육', '전체리더십캠프', 2000000),
+  ('양육', '여름 수련회',    8000000),
+  ('양육', '겨울 수련회',   10000000),
+  ('양육', '임원단 활동비',  1800000),
+  ('양육', '임원단 캠프',    1500000),
+  ('양육', '교육훈련비',      800000),
+  ('양육', '생일/동반',      1320000),
+  ('양육', '고3 사역',        300000),
+  ('양육', '새가족팀',        720000),
+  -- 사역
+  ('사역', '사역국장지원비',          720000),
+  ('사역', '카이노스 찬양팀',        1500000),
+  ('사역', '홍보 기도팀',             600000),
+  ('사역', '방송팀',                 1020000),
+  ('사역', '스포츠선교팀',           1500000),
+  ('사역', '전도팀',                 1200000),
+  ('사역', '케노시스 워십팀',         420000),
+  ('사역', '로밍 기도회',             600000),
+  ('사역', '평신도사역자 지원비',    6000000),
+  ('사역', '금요예배 지원',          1000000),
+  -- 행사
+  ('행사', '특별예배',      1000000),
+  ('행사', '전도프로그램',  1500000),
+  ('행사', '신인생 환영캠프', 1000000),
+  ('행사', '임명식/수료식',   500000),
+  ('행사', '연합행사',        200000),
+  ('행사', '크리스마스',     1200000),
+  ('행사', '야외예배',              0),
+  ('행사', '봉사활동',      1000000),
+  ('행사', '강사초청',      1600000)
+on conflict do nothing;
