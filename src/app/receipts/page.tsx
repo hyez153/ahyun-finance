@@ -40,9 +40,9 @@ export default function ReceiptsPage() {
       .select('*, budget_categories(group_name, category_name)')
       .order('created_at', { ascending: false })
 
-    // 일반 사용자: 본인이 제출한 영수증만
+    // 일반 사용자: 본인이 제출했거나 결제자로 지정된 영수증
     if (!isAdmin) {
-      query = query.eq('submitter_name', user.name)
+      query = query.or(`submitter_name.eq.${user.name},payer_name.eq.${user.name}`)
     }
 
     query.then(({ data }) => {
