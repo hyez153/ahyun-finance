@@ -1,0 +1,293 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { Receipt, ClaimBatch } from '@/types/database'
+import { formatKRW, formatDate } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft, Printer, Loader2 } from 'lucide-react'
+
+const GROUP_ORDER = ['목회', '양육', '사역', '행사'] as const
+type GroupName = (typeof GROUP_ORDER)[number]
+
+const GROUP_BUDGET_SECTION: Record<GroupName, { gwan: string; hang: string }> = {
+  '목회': { gwan: '경상비', hang: '목회 행정비' },
+  '양육': { gwan: '경상비', hang: '양육 훈련비' },
+  '사역': { gwan: '경상비', hang: '사역 지원비' },
+  '행사': { gwan: '경상비', hang: '행사 운영비' },
+}
+
+type BudgetCategory = {
+  id: number
+  group_name: string
+  category_name: string
+  annual_budget: number
+}
+
+export default function ClaimReportPage() {
+  const searchParams = useSearchParams()
+  const batchId = searchParams.get('batchId')
+  const [batch, setBatch] = useState<ClaimBatch | null>(null)
+  const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>([])
+  const [prevClaimedByGroup, setPrevClaimedByGroup] = useState<Record<string, number>>({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      if (!batchId) { setLoading(false); return }
+
+      const [batchRes, receiptRes, budgetRes] = await Promise.all([
+        supabase.from('claim_batches').select('*').eq('id', Number(batchId)).single(),
+        supabase
+          .from('receipts')
+          .select('*, budget_categories(group_name, category_name)')
+          .eq('claim_batch_id', Number(batchId))
+          .order('receipt_date'),
+        supabase.from('budget_categories').select('id, group_name, category_name, annual_budget'),
+      ])
+
+      const batchData = batchRes.data as ClaimBatch | null
+      setBatch(batchData ?? null)
+      setReceipts((receiptRes.data as Receipt[]) ?? [])
+      setBudgetCategories((budgetRes.data as BudgetCategory[]) ?? [])
+
+      // 이전 청구일 기준 정산 완료된 금액 (현재 배치 청구일 이전 영수증 합계)
+      if (batchData) {
+        const { data: prevReceipts } = await supabase
+          .from('receipts')
+          .select('amount, budget_categories(group_name)')
+          .lt('receipt_date', batchData.claim_date)
+
+        const grouped: Record<string, number> = {}
+        for (const r of (prevReceipts ?? [])) {
+          const g = (r as any).budget_categories?.group_name ?? '기타'
+          grouped[g] = (grouped[g] || 0) + Number(r.amount ?? 0)
+        }
+        setPrevClaimedByGroup(grouped)
+      }
+
+      setLoading(false)
+    }
+    load()
+  }, [batchId])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+      </div>
+    )
+  }
+
+  if (!batch) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
+        <p className="text-slate-500">청구 데이터를 찾을 수 없습니다.</p>
+        <Link href="/admin/claims">
+          <Button variant="outline"><ArrowLeft className="w-4 h-4 mr-2" />돌아가기</Button>
+        </Link>
+      </div>
+    )
+  }
+
+  // Group receipts by group_name, then by category
+  const groupedByGroup: Record<string, Record<string, Receipt[]>> = {}
+  for (const r of receipts) {
+    const groupName = r.budget_categories?.group_name ?? '기타'
+    const catName = r.budget_categories?.category_name ?? '미분류'
+    if (!groupedByGroup[groupName]) groupedByGroup[groupName] = {}
+    if (!groupedByGroup[groupName][catName]) groupedByGroup[groupName][catName] = []
+    groupedByGroup[groupName][catName].push(r)
+  }
+
+  const claimDateStr = `${batch.year}년 ${String(batch.month).padStart(2, '0')}월 ${formatDate(batch.claim_date).split(' ').pop()}`
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b sticky top-0 z-10 print:hidden">
+        <div className="max-w-[210mm] mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Link href="/admin/claims">
+              <ArrowLeft className="w-5 h-5 text-slate-500 cursor-pointer hover:text-slate-700" />
+            </Link>
+            <h1 className="font-semibold text-slate-800">지출결의서 인쇄</h1>
+          </div>
+          <Button onClick={() => window.print()} size="sm" className="gap-2">
+            <Printer className="w-4 h-4" />
+            인쇄
+          </Button>
+        </div>
+      </header>
+
+      <div className="max-w-[210mm] mx-auto px-4 py-6 print:p-0 print:max-w-none">
+        {GROUP_ORDER.filter(g => groupedByGroup[g]).map((groupName, pageIdx) => {
+          const categories = groupedByGroup[groupName]
+          const catNames = Object.keys(categories).sort((a, b) => a.localeCompare(b, 'ko'))
+          const groupTotal = Object.values(categories).flat().reduce((s, r) => s + r.amount, 0)
+          const section = GROUP_BUDGET_SECTION[groupName]
+
+          // 해당 그룹의 연간 예산 합계 (소그룹_XX 리더별 카테고리는 소그룹 운영비에 포함되므로 제외)
+          const groupBudget = budgetCategories
+            .filter(bc => bc.group_name === groupName && !bc.category_name.match(/^소그룹_/))
+            .reduce((s, bc) => s + Number(bc.annual_budget || 0), 0)
+          // 이전 청구 기준 잔액
+          const prevClaimed = prevClaimedByGroup[groupName] || 0
+          const currentBalance = groupBudget - prevClaimed
+
+          return (
+            <div key={groupName} className={`bg-white print:bg-transparent ${pageIdx > 0 ? 'mt-8 print:mt-0' : ''}`} style={{ pageBreakBefore: pageIdx > 0 ? 'always' : 'auto' }}>
+              <div className="border-2 border-black p-6 print:p-8">
+                {/* 제목 */}
+                <h1 className="text-2xl font-black text-center tracking-[0.3em] mb-6">지 출 결 의 서</h1>
+
+                {/* 청구/결재 테이블 */}
+                <div className="flex gap-4 mb-4">
+                  <table className="border-collapse border border-black text-xs flex-1">
+                    <tbody>
+                      <tr>
+                        <td rowSpan={2} className="border border-black px-2 py-1 font-bold bg-gray-50 text-center w-12">청구</td>
+                        <td className="border border-black px-2 py-1 text-center">회계</td>
+                        <td className="border border-black px-2 py-1 text-center">회장</td>
+                        <td className="border border-black px-2 py-1 text-center">담당권사</td>
+                        <td className="border border-black px-2 py-1 text-center">담당장로</td>
+                        <td className="border border-black px-2 py-1 text-center">담당목사</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-2 py-4"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <table className="border-collapse border border-black text-xs flex-1">
+                    <tbody>
+                      <tr>
+                        <td rowSpan={2} className="border border-black px-2 py-1 font-bold bg-gray-50 text-center w-12">결재</td>
+                        <td className="border border-black px-2 py-1 text-center">재무회계</td>
+                        <td className="border border-black px-2 py-1 text-center">재무총무</td>
+                        <td className="border border-black px-2 py-1 text-center">재무부장</td>
+                        <td className="border border-black px-2 py-1 text-center">담임목사</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-2 py-4"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 정보 테이블 */}
+                <table className="border-collapse border border-black w-full text-xs mb-4">
+                  <tbody>
+                    <tr>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 w-14 whitespace-nowrap">청구부서</td>
+                      <td className="border border-black px-2 py-1.5 whitespace-nowrap text-sm" colSpan={3}>아현젊은이교회</td>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 w-14 whitespace-nowrap">청구일자</td>
+                      <td className="border border-black px-2 py-1.5 whitespace-nowrap">{formatDate(batch.claim_date)}</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50">예산금액</td>
+                      <td className="border border-black px-2 py-1.5" colSpan={3}>{formatKRW(groupBudget)}</td>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50">예산확인</td>
+                      <td className="border border-black px-2 py-1.5">행정간사 김연진 확인</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50">현재잔액</td>
+                      <td className="border border-black px-2 py-1.5" colSpan={5}>{formatKRW(currentBalance)}</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50">청구금액</td>
+                      <td className="border border-black px-2 py-1.5 font-bold text-base" colSpan={5}>{formatKRW(groupTotal)}</td>
+                    </tr>
+                    <tr>
+                      <td rowSpan={3} className="border border-black px-2 py-1.5 font-bold bg-gray-50 text-center">예산</td>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 w-10 text-center">관</td>
+                      <td className="border border-black px-2 py-1.5" colSpan={4}>{section.gwan}</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 text-center">항</td>
+                      <td className="border border-black px-2 py-1.5" colSpan={4}>{section.hang}</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 text-center">목</td>
+                      <td className="border border-black px-2 py-1.5" colSpan={4}></td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* 세부 내역 */}
+                <table className="border-collapse border border-black w-full text-sm mb-4" style={{ breakInside: 'auto' }}>
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="border border-black px-3 py-2 text-left w-8">No.</th>
+                      <th className="border border-black px-3 py-2 text-left">항목</th>
+                      <th className="border border-black px-3 py-2 text-left">내용</th>
+                      <th className="border border-black px-3 py-2 text-left">결제자</th>
+                      <th className="border border-black px-3 py-2 text-right w-28">금액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catNames.map((catName, catIdx) => {
+                      const catReceipts = categories[catName]
+                      const catTotal = catReceipts.reduce((s, r) => s + r.amount, 0)
+
+                      return (
+                        <>
+                          {/* 카테고리 소계 행 */}
+                          <tr key={`cat-${catName}`} className="bg-gray-50" style={{ breakInside: 'avoid' }}>
+                            <td className="border border-black px-3 py-1.5 font-bold">{catIdx + 1}</td>
+                            <td className="border border-black px-3 py-1.5 font-bold">{catName}</td>
+                            <td className="border border-black px-3 py-1.5 text-xs text-slate-500">{catReceipts.length}건</td>
+                            <td className="border border-black px-3 py-1.5"></td>
+                            <td className="border border-black px-3 py-1.5 text-right font-bold">{formatKRW(catTotal)}</td>
+                          </tr>
+                          {/* 개별 영수증 */}
+                          {catReceipts.map((r, rIdx) => (
+                            <tr key={r.id} style={{ breakInside: 'avoid' }}>
+                              <td className="border border-black px-3 py-1 text-xs text-slate-400"></td>
+                              <td className="border border-black px-3 py-1 text-xs text-slate-500">{catName}</td>
+                              <td className="border border-black px-3 py-1 text-xs">{r.vendor_name}{r.memo ? ` - ${r.memo}` : ''}</td>
+                              <td className="border border-black px-3 py-1 text-xs">{r.payer_name || r.submitter_name}</td>
+                              <td className="border border-black px-3 py-1 text-xs text-right">{formatKRW(r.amount)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      )
+                    })}
+                    {/* 합계 */}
+                    <tr className="bg-gray-100">
+                      <td className="border border-black px-3 py-2 font-bold" colSpan={4}>합계</td>
+                      <td className="border border-black px-3 py-2 text-right font-bold text-base">{formatKRW(groupTotal)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* 하단 확인 */}
+                <p className="text-center text-sm mt-8">
+                  {formatDate(batch.claim_date)} 지급처리확인
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <style jsx>{`
+        @media print {
+          body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          @page { margin: 10mm; size: A4; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; }
+          table { break-inside: auto; }
+        }
+      `}</style>
+    </div>
+  )
+}

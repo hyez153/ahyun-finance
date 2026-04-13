@@ -3,6 +3,18 @@
 -- Supabase SQL Editor에서 실행
 -- ============================================================
 
+-- ============================================================
+-- 0. 초기화 (기존 테이블/정책 전체 삭제)
+-- ============================================================
+drop table if exists public.budget_transactions cascade;
+drop table if exists public.receipts cascade;
+drop table if exists public.claim_batches cascade;
+drop table if exists public.budget_categories cascade;
+
+drop policy if exists "public upload receipt files" on storage.objects;
+drop policy if exists "public read receipt files" on storage.objects;
+
+
 create extension if not exists pgcrypto;
 
 -- ============================================================
@@ -23,12 +35,13 @@ create table if not exists public.claim_batches (
   id                  bigint generated always as identity primary key,
   year                int not null,
   month               int not null check (month between 1 and 12),
+  half                int not null default 1 check (half in (1, 2)),  -- 1=첫째주, 2=셋째주
   submission_deadline timestamptz not null,
   claim_date          date not null,
   status              text not null default 'draft' check (status in ('draft', 'confirmed')),
   total_amount        numeric(14, 2) not null default 0,
   created_at          timestamptz not null default now(),
-  unique (year, month)
+  unique (year, month, half)
 );
 
 -- ============================================================
@@ -37,6 +50,7 @@ create table if not exists public.claim_batches (
 create table if not exists public.receipts (
   id                  bigint generated always as identity primary key,
   submitter_name      text not null,
+  payer_name          text,            -- 결제자 (제출자와 다를 수 있음)
   budget_category_id  bigint not null references public.budget_categories(id),
   claim_batch_id      bigint references public.claim_batches(id),
   amount              numeric(14, 2) not null check (amount > 0),
@@ -109,31 +123,31 @@ insert into public.budget_categories (group_name, category_name, annual_budget) 
   -- 양육
   ('양육', '리더장 지원비',  1200000),
   ('양육', '리더 모임',      2000000),
-  ('양육', '소그룹 운영비',  8150000),
+  ('양육', '소그룹 운영비',  8100000),
   ('양육', '전체리더십캠프', 2000000),
   ('양육', '여름 수련회',    8000000),
   ('양육', '겨울 수련회',   10000000),
   ('양육', '임원단 활동비',  1800000),
   ('양육', '임원단 캠프',    1500000),
   ('양육', '교육훈련비',      800000),
-  ('양육', '생일/동반',      1320000),
+  ('양육', '생일/등반',      1370000),
   ('양육', '고3 사역',        300000),
   ('양육', '새가족팀',        720000),
   -- 사역
   ('사역', '사역국장지원비',          720000),
   ('사역', '카이노스 찬양팀',        1500000),
-  ('사역', '홍보 기도팀',             600000),
+  ('사역', '중보기도팀',              600000),
   ('사역', '방송팀',                 1020000),
   ('사역', '스포츠선교팀',           1500000),
   ('사역', '전도팀',                 1200000),
   ('사역', '케노시스 워십팀',         420000),
-  ('사역', '로밍 기도회',             600000),
+  ('사역', '로뎀 기도회',             600000),
   ('사역', '평신도사역자 지원비',    6000000),
   ('사역', '금요예배 지원',          1000000),
   -- 행사
   ('행사', '특별예배',      1000000),
   ('행사', '전도프로그램',  1500000),
-  ('행사', '신인생 환영캠프', 1000000),
+  ('행사', '신입생 환영캠프', 1000000),
   ('행사', '임명식/수료식',   500000),
   ('행사', '연합행사',        200000),
   ('행사', '크리스마스',     1200000),
@@ -141,3 +155,11 @@ insert into public.budget_categories (group_name, category_name, annual_budget) 
   ('행사', '봉사활동',      1000000),
   ('행사', '강사초청',      1600000)
 on conflict do nothing;
+
+-- ============================================================
+-- 8. 테이블 권한 부여 (RLS 정책 외 별도 필요)
+-- ============================================================
+grant select on public.budget_categories to anon, authenticated;
+grant select on public.claim_batches to anon, authenticated;
+grant select, insert, update on public.receipts to anon, authenticated;
+grant select, insert on public.budget_transactions to anon, authenticated;

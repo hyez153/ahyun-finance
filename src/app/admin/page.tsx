@@ -8,35 +8,91 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Receipt, CreditCard, BarChart3, AlertTriangle } from 'lucide-react'
 
+type GroupName = '목회' | '양육' | '사역' | '행사'
+interface GroupStat {
+  group: GroupName
+  budget: number
+  used: number
+}
+
+const GROUP_COLORS: Record<GroupName, string> = {
+  '목회': '#3b82f6',
+  '양육': '#10b981',
+  '사역': '#f59e0b',
+  '행사': '#8b5cf6',
+}
+
 export default function AdminHome() {
   const [stats, setStats] = useState({
     totalReceipts: 0,
     pendingReceipts: 0,
     totalBudget: 0,
     usedBudget: 0,
-    activeBatch: null as { year: number; month: number; status: string } | null,
+    activeBatch: null as { year: number; month: number; half: number; status: string } | null,
   })
+  const [groupStats, setGroupStats] = useState<GroupStat[]>([])
 
   useEffect(() => {
     async function load() {
-      const [receiptsRes, categoriesRes, transactionsRes, batchRes] = await Promise.all([
+      const [receiptsRes, categoriesRes, transactionsRes, pendingReceiptsRes, batchRes] = await Promise.all([
         supabase.from('receipts').select('id, status, is_claimed, amount'),
-        supabase.from('budget_categories').select('annual_budget'),
-        supabase.from('budget_transactions').select('amount'),
-        supabase.from('claim_batches').select('year, month, status').order('year', { ascending: false }).order('month', { ascending: false }).limit(1),
+        supabase.from('budget_categories').select('id, category_name, group_name, annual_budget'),
+        supabase.from('budget_transactions').select('budget_category_id, amount'),
+        supabase.from('receipts').select('budget_category_id, amount').eq('status', 'submitted').eq('is_claimed', false),
+        supabase.from('claim_batches').select('year, month, half, status').order('year', { ascending: false }).order('month', { ascending: false }).order('half', { ascending: false }).limit(1),
       ])
 
       const receipts = receiptsRes.data ?? []
-      const categories = categoriesRes.data ?? []
-      const transactions = transactionsRes.data ?? []
+      const categories = (categoriesRes.data ?? []) as { id: number; category_name: string; group_name: GroupName; annual_budget: number }[]
+      const transactions = (transactionsRes.data ?? []) as { budget_category_id: number; amount: number }[]
+      const pendingReceipts = (pendingReceiptsRes.data ?? []) as { budget_category_id: number; amount: number }[]
+
+      // 소그룹 리더 카테고리 제외 (예산 탭과 동일)
+      const mainCategories = categories.filter(c => !c.category_name.startsWith('소그룹_'))
+      const mainCatIds = new Set(mainCategories.map(c => c.id))
+
+      const totalBudget = mainCategories.reduce((s, c) => s + (c.annual_budget ?? 0), 0)
+      const confirmed = transactions
+        .filter(t => mainCatIds.has(t.budget_category_id))
+        .reduce((s, t) => s + Math.abs(t.amount), 0)
+      const pending = pendingReceipts
+        .filter(r => mainCatIds.has(r.budget_category_id))
+        .reduce((s, r) => s + Number(r.amount), 0)
 
       setStats({
         totalReceipts: receipts.length,
         pendingReceipts: receipts.filter(r => r.status === 'submitted' && !r.is_claimed).length,
-        totalBudget: categories.reduce((s, c) => s + (c.annual_budget ?? 0), 0),
-        usedBudget: Math.abs(transactions.filter(t => t.amount < 0).reduce((s, t) => s + t.amount, 0)),
+        totalBudget,
+        usedBudget: confirmed + pending,
         activeBatch: batchRes.data?.[0] ?? null,
       })
+
+      // 그룹별 통계
+      const catIdToGroup = new Map<number, GroupName>()
+      mainCategories.forEach(c => catIdToGroup.set(c.id, c.group_name))
+
+      const groupBudget: Record<GroupName, number> = { '목회': 0, '양육': 0, '사역': 0, '행사': 0 }
+      const groupUsed: Record<GroupName, number> = { '목회': 0, '양육': 0, '사역': 0, '행사': 0 }
+
+      mainCategories.forEach(c => {
+        groupBudget[c.group_name] = (groupBudget[c.group_name] || 0) + (c.annual_budget ?? 0)
+      })
+      transactions.forEach(t => {
+        const g = catIdToGroup.get(t.budget_category_id)
+        if (g) groupUsed[g] = (groupUsed[g] || 0) + Math.abs(t.amount)
+      })
+      pendingReceipts.forEach(r => {
+        const g = catIdToGroup.get(r.budget_category_id)
+        if (g) groupUsed[g] = (groupUsed[g] || 0) + Number(r.amount)
+      })
+
+      setGroupStats(
+        (['목회', '양육', '사역', '행사'] as GroupName[]).map(g => ({
+          group: g,
+          budget: groupBudget[g] || 0,
+          used: groupUsed[g] || 0,
+        }))
+      )
     }
     load()
   }, [])
@@ -100,7 +156,7 @@ export default function AdminHome() {
           <CardContent className="px-4 pb-4">
             {stats.activeBatch ? (
               <>
-                <p className="text-2xl font-bold text-slate-800">{stats.activeBatch.month}월</p>
+                <p className="text-2xl font-bold text-slate-800">{stats.activeBatch.month}월 {stats.activeBatch.half === 1 ? '첫째주' : '셋째주'}</p>
                 <Badge variant={stats.activeBatch.status === 'confirmed' ? 'outline' : 'default'} className="text-xs mt-0.5">
                   {stats.activeBatch.status === 'confirmed' ? '확정됨' : '진행 중'}
                 </Badge>
@@ -111,6 +167,47 @@ export default function AdminHome() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 그룹별 예산 사용 현황 차트 */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold text-slate-700">그룹별 예산 사용 현황</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {groupStats.map(({ group, budget, used }) => {
+            const rate = budget > 0 ? Math.round((used / budget) * 100) : 0
+            const barWidth = budget > 0 ? Math.min((used / budget) * 100, 100) : 0
+            return (
+              <div key={group} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full inline-block"
+                      style={{ backgroundColor: GROUP_COLORS[group] }}
+                    />
+                    <span className="font-medium text-slate-700">{group}</span>
+                  </div>
+                  <span className="text-slate-500">
+                    {formatKRW(used)} / {formatKRW(budget)} ({rate}%)
+                  </span>
+                </div>
+                <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${barWidth}%`,
+                      backgroundColor: rate > 90 ? '#ef4444' : GROUP_COLORS[group],
+                    }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+          {groupStats.length === 0 && (
+            <p className="text-xs text-slate-400 text-center py-4">데이터를 불러오는 중...</p>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {[

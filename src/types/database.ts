@@ -16,6 +16,7 @@ export interface ClaimBatch {
   id: number
   year: number
   month: number
+  half: 1 | 2              // 1=첫째주, 2=셋째주
   submission_deadline: string
   claim_date: string
   status: ClaimBatchStatus
@@ -26,6 +27,7 @@ export interface ClaimBatch {
 export interface Receipt {
   id: number
   submitter_name: string
+  payer_name: string | null   // 결제자 (null이면 제출자=결제자)
   budget_category_id: number
   claim_batch_id: number | null
   amount: number
@@ -63,6 +65,16 @@ export interface BudgetSummary {
   used_amount: number
   remaining: number
   usage_rate: number
+}
+
+export type UserRole = 'admin' | 'user'
+
+export interface User {
+  id: number
+  name: string
+  password: string
+  role: UserRole
+  created_at: string
 }
 
 export type Database = {
