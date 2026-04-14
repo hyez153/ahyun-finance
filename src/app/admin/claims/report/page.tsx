@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -35,6 +35,30 @@ export default function ClaimReportPage() {
   const [prevClaimedByGroup, setPrevClaimedByGroup] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  // A4 높이(mm)를 px로 변환 (약 1123px at 96dpi), 여백 제외
+  const A4_HEIGHT_PX = 1050
+
+  const fitPages = useCallback(() => {
+    pageRefs.current.forEach(el => {
+      if (!el) return
+      el.style.transform = ''
+      el.style.transformOrigin = 'top left'
+      const contentHeight = el.scrollHeight
+      if (contentHeight > A4_HEIGHT_PX) {
+        const scale = A4_HEIGHT_PX / contentHeight
+        el.style.transform = `scale(${scale})`
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!loading && batch) {
+      // DOM 렌더 후 스케일 적용
+      requestAnimationFrame(fitPages)
+    }
+  }, [loading, batch, fitPages])
 
   useEffect(() => {
     async function load() {
@@ -206,99 +230,103 @@ export default function ClaimReportPage() {
           const currentBalance = groupBudget - prevClaimed
 
           return (
-            <div key={groupName} data-pdf-page className={`bg-white print:bg-transparent ${pageIdx > 0 ? 'mt-8 print:mt-0' : ''}`} style={{ pageBreakBefore: pageIdx > 0 ? 'always' : 'auto' }}>
-              <div className="border-2 border-black p-6 print:p-8">
+            <div key={groupName} className={`bg-white print:bg-transparent ${pageIdx > 0 ? 'mt-8 print:mt-0' : ''}`} style={{ pageBreakBefore: pageIdx > 0 ? 'always' : 'auto' }}>
+              <div
+                ref={el => { pageRefs.current[pageIdx] = el }}
+                data-pdf-page
+                className="border-2 border-black p-5 print:p-6 origin-top-left"
+              >
                 {/* 제목 */}
-                <h1 className="text-2xl font-black text-center tracking-[0.3em] mb-6">지 출 결 의 서</h1>
+                <h1 className="text-xl font-black text-center tracking-[0.3em] mb-4">지 출 결 의 서</h1>
 
                 {/* 청구/결재 테이블 */}
-                <div className="flex gap-4 mb-4">
-                  <table className="border-collapse border border-black text-xs flex-1">
+                <div className="flex gap-3 mb-3">
+                  <table className="border-collapse border border-black text-[10px] flex-1">
                     <tbody>
                       <tr>
-                        <td rowSpan={2} className="border border-black px-2 py-1 font-bold bg-gray-50 text-center w-12">청구</td>
-                        <td className="border border-black px-2 py-1 text-center">회계</td>
-                        <td className="border border-black px-2 py-1 text-center">회장</td>
-                        <td className="border border-black px-2 py-1 text-center">담당권사</td>
-                        <td className="border border-black px-2 py-1 text-center">담당장로</td>
-                        <td className="border border-black px-2 py-1 text-center">담당목사</td>
+                        <td rowSpan={2} className="border border-black px-1.5 py-0.5 font-bold bg-gray-50 text-center w-10">청구</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">회계</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">회장</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">담당권사</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">담당장로</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">담당목사</td>
                       </tr>
                       <tr>
-                        <td className="border border-black px-2 py-4"></td>
-                        <td className="border border-black px-2 py-4"></td>
-                        <td className="border border-black px-2 py-4"></td>
-                        <td className="border border-black px-2 py-4"></td>
-                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
                       </tr>
                     </tbody>
                   </table>
-                  <table className="border-collapse border border-black text-xs flex-1">
+                  <table className="border-collapse border border-black text-[10px] flex-1">
                     <tbody>
                       <tr>
-                        <td rowSpan={2} className="border border-black px-2 py-1 font-bold bg-gray-50 text-center w-12">결재</td>
-                        <td className="border border-black px-2 py-1 text-center">재무회계</td>
-                        <td className="border border-black px-2 py-1 text-center">재무총무</td>
-                        <td className="border border-black px-2 py-1 text-center">재무부장</td>
-                        <td className="border border-black px-2 py-1 text-center">담임목사</td>
+                        <td rowSpan={2} className="border border-black px-1.5 py-0.5 font-bold bg-gray-50 text-center w-10">결재</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">재무회계</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">재무총무</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">재무부장</td>
+                        <td className="border border-black px-1.5 py-0.5 text-center">담임목사</td>
                       </tr>
                       <tr>
-                        <td className="border border-black px-2 py-4"></td>
-                        <td className="border border-black px-2 py-4"></td>
-                        <td className="border border-black px-2 py-4"></td>
-                        <td className="border border-black px-2 py-4"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
+                        <td className="border border-black px-1.5 py-3"></td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
 
                 {/* 정보 테이블 */}
-                <table className="border-collapse border border-black w-full text-xs mb-4">
+                <table className="border-collapse border border-black w-full text-[10px] mb-3">
                   <tbody>
                     <tr>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 w-14 whitespace-nowrap">청구부서</td>
-                      <td className="border border-black px-2 py-1.5 whitespace-nowrap text-sm" colSpan={3}>아현젊은이교회</td>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 w-14 whitespace-nowrap">청구일자</td>
-                      <td className="border border-black px-2 py-1.5 whitespace-nowrap">{formatDate(batch.claim_date)}</td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50 w-14 whitespace-nowrap">청구부서</td>
+                      <td className="border border-black px-1.5 py-1 whitespace-nowrap text-xs" colSpan={3}>아현젊은이교회</td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50 w-14 whitespace-nowrap">청구일자</td>
+                      <td className="border border-black px-1.5 py-1 whitespace-nowrap">{formatDate(batch.claim_date)}</td>
                     </tr>
                     <tr>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50">예산금액</td>
-                      <td className="border border-black px-2 py-1.5" colSpan={3}>{formatKRW(groupBudget)}</td>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50">예산확인</td>
-                      <td className="border border-black px-2 py-1.5">행정간사 김연진 확인</td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50">예산금액</td>
+                      <td className="border border-black px-1.5 py-1" colSpan={3}>{formatKRW(groupBudget)}</td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50">예산확인</td>
+                      <td className="border border-black px-1.5 py-1">행정간사 김연진 확인</td>
                     </tr>
                     <tr>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50">현재잔액</td>
-                      <td className="border border-black px-2 py-1.5" colSpan={5}>{formatKRW(currentBalance)}</td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50">현재잔액</td>
+                      <td className="border border-black px-1.5 py-1" colSpan={5}>{formatKRW(currentBalance)}</td>
                     </tr>
                     <tr>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50">청구금액</td>
-                      <td className="border border-black px-2 py-1.5 font-bold text-base" colSpan={5}>{formatKRW(groupTotal)}</td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50">청구금액</td>
+                      <td className="border border-black px-1.5 py-1 font-bold text-sm" colSpan={5}>{formatKRW(groupTotal)}</td>
                     </tr>
                     <tr>
-                      <td rowSpan={3} className="border border-black px-2 py-1.5 font-bold bg-gray-50 text-center">예산</td>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 w-10 text-center">관</td>
-                      <td className="border border-black px-2 py-1.5" colSpan={4}>{section.gwan}</td>
+                      <td rowSpan={3} className="border border-black px-1.5 py-1 font-bold bg-gray-50 text-center">예산</td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50 w-8 text-center">관</td>
+                      <td className="border border-black px-1.5 py-1" colSpan={4}>{section.gwan}</td>
                     </tr>
                     <tr>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 text-center">항</td>
-                      <td className="border border-black px-2 py-1.5" colSpan={4}>{section.hang}</td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50 text-center">항</td>
+                      <td className="border border-black px-1.5 py-1" colSpan={4}>{section.hang}</td>
                     </tr>
                     <tr>
-                      <td className="border border-black px-2 py-1.5 font-bold bg-gray-50 text-center">목</td>
-                      <td className="border border-black px-2 py-1.5" colSpan={4}></td>
+                      <td className="border border-black px-1.5 py-1 font-bold bg-gray-50 text-center">목</td>
+                      <td className="border border-black px-1.5 py-1" colSpan={4}></td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* 세부 내역 */}
-                <table className="border-collapse border border-black w-full text-sm mb-4" style={{ breakInside: 'auto' }}>
+                <table className="border-collapse border border-black w-full text-xs mb-3">
                   <thead>
                     <tr className="bg-gray-50">
-                      <th className="border border-black px-3 py-2 text-left w-8">No.</th>
-                      <th className="border border-black px-3 py-2 text-left">항목</th>
-                      <th className="border border-black px-3 py-2 text-left">내용</th>
-                      <th className="border border-black px-3 py-2 text-left">결제자</th>
-                      <th className="border border-black px-3 py-2 text-right w-28">금액</th>
+                      <th className="border border-black px-2 py-1 text-left w-7">No.</th>
+                      <th className="border border-black px-2 py-1 text-left">항목</th>
+                      <th className="border border-black px-2 py-1 text-left">내용</th>
+                      <th className="border border-black px-2 py-1 text-left">결제자</th>
+                      <th className="border border-black px-2 py-1 text-right w-24">금액</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -309,21 +337,21 @@ export default function ClaimReportPage() {
                       return (
                         <>
                           {/* 카테고리 소계 행 */}
-                          <tr key={`cat-${catName}`} className="bg-gray-50" style={{ breakInside: 'avoid' }}>
-                            <td className="border border-black px-3 py-1.5 font-bold">{catIdx + 1}</td>
-                            <td className="border border-black px-3 py-1.5 font-bold">{catName}</td>
-                            <td className="border border-black px-3 py-1.5 text-xs text-slate-500">{catReceipts.length}건</td>
-                            <td className="border border-black px-3 py-1.5"></td>
-                            <td className="border border-black px-3 py-1.5 text-right font-bold">{formatKRW(catTotal)}</td>
+                          <tr key={`cat-${catName}`} className="bg-gray-50">
+                            <td className="border border-black px-2 py-0.5 font-bold">{catIdx + 1}</td>
+                            <td className="border border-black px-2 py-0.5 font-bold">{catName}</td>
+                            <td className="border border-black px-2 py-0.5 text-[10px] text-slate-500">{catReceipts.length}건</td>
+                            <td className="border border-black px-2 py-0.5"></td>
+                            <td className="border border-black px-2 py-0.5 text-right font-bold">{formatKRW(catTotal)}</td>
                           </tr>
                           {/* 개별 영수증 */}
-                          {catReceipts.map((r, rIdx) => (
-                            <tr key={r.id} style={{ breakInside: 'avoid' }}>
-                              <td className="border border-black px-3 py-1 text-xs text-slate-400"></td>
-                              <td className="border border-black px-3 py-1 text-xs text-slate-500">{catName}</td>
-                              <td className="border border-black px-3 py-1 text-xs">{r.vendor_name}{r.memo ? ` - ${r.memo}` : ''}</td>
-                              <td className="border border-black px-3 py-1 text-xs">{r.payer_name || r.submitter_name}</td>
-                              <td className="border border-black px-3 py-1 text-xs text-right">{formatKRW(r.amount)}</td>
+                          {catReceipts.map((r) => (
+                            <tr key={r.id}>
+                              <td className="border border-black px-2 py-0.5 text-[10px] text-slate-400"></td>
+                              <td className="border border-black px-2 py-0.5 text-[10px] text-slate-500">{catName}</td>
+                              <td className="border border-black px-2 py-0.5 text-[10px]">{r.vendor_name}{r.memo ? ` - ${r.memo}` : ''}</td>
+                              <td className="border border-black px-2 py-0.5 text-[10px]">{r.payer_name || r.submitter_name}</td>
+                              <td className="border border-black px-2 py-0.5 text-[10px] text-right">{formatKRW(r.amount)}</td>
                             </tr>
                           ))}
                         </>
@@ -331,14 +359,14 @@ export default function ClaimReportPage() {
                     })}
                     {/* 합계 */}
                     <tr className="bg-gray-100">
-                      <td className="border border-black px-3 py-2 font-bold" colSpan={4}>합계</td>
-                      <td className="border border-black px-3 py-2 text-right font-bold text-base">{formatKRW(groupTotal)}</td>
+                      <td className="border border-black px-2 py-1 font-bold" colSpan={4}>합계</td>
+                      <td className="border border-black px-2 py-1 text-right font-bold text-sm">{formatKRW(groupTotal)}</td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* 하단 확인 */}
-                <p className="text-center text-sm mt-8">
+                <p className="text-center text-xs mt-4">
                   {formatDate(batch.claim_date)} 지급처리확인
                 </p>
               </div>
@@ -350,10 +378,11 @@ export default function ClaimReportPage() {
       <style jsx>{`
         @media print {
           body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          @page { margin: 10mm; size: A4; }
+          @page { margin: 8mm; size: A4; }
           thead { display: table-header-group; }
           tr { break-inside: avoid; }
           table { break-inside: auto; }
+          [data-pdf-page] { page-break-after: always; page-break-inside: avoid; }
         }
       `}</style>
     </div>
