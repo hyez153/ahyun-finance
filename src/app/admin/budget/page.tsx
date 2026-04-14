@@ -37,6 +37,12 @@ interface GroupClaimData {
   행사: number
 }
 
+interface CategoryClaimData {
+  date: string
+  // group -> category -> amount
+  details: Record<string, Record<string, number>>
+}
+
 const GROUP_COLORS: Record<string, string> = {
   '목회': '#6366f1', // indigo
   '양육': '#10b981', // emerald
@@ -50,7 +56,9 @@ export default function BudgetPage() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [claimPeriods, setClaimPeriods] = useState<ClaimPeriodData[]>([])
   const [groupClaimData, setGroupClaimData] = useState<GroupClaimData[]>([])
+  const [categoryClaimData, setCategoryClaimData] = useState<CategoryClaimData[]>([])
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set(GROUPS))
+  const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     async function load() {
@@ -100,17 +108,23 @@ export default function BudgetPage() {
       // 청구된 영수증 기반으로 그룹별 청구일별 집계
       const claimedReceipts = (claimedReceiptsRes.data ?? []) as { budget_category_id: number; amount: number; receipt_date: string }[]
       const catMap = new Map(categories.map(c => [c.id, c.group_name as string]))
+      const catNameMap = new Map(categories.map(c => [c.id, c.category_name]))
 
       const groupPeriodMap: Record<string, Record<string, number>> = {}
       const receiptCountMap: Record<string, number> = {}
+      const catPeriodMap: Record<string, Record<string, Record<string, number>>> = {} // date -> group -> category -> amount
 
       for (const r of claimedReceipts) {
         const date = r.receipt_date
         const group = catMap.get(r.budget_category_id) ?? '기타'
+        const catName = catNameMap.get(r.budget_category_id) ?? '기타'
         const amt = Number(r.amount || 0)
         if (!groupPeriodMap[date]) groupPeriodMap[date] = {}
         groupPeriodMap[date][group] = (groupPeriodMap[date][group] ?? 0) + amt
         receiptCountMap[date] = (receiptCountMap[date] ?? 0) + 1
+        if (!catPeriodMap[date]) catPeriodMap[date] = {}
+        if (!catPeriodMap[date][group]) catPeriodMap[date][group] = {}
+        catPeriodMap[date][group][catName] = (catPeriodMap[date][group][catName] ?? 0) + amt
       }
 
       const periods = Object.keys(groupPeriodMap)
@@ -131,8 +145,13 @@ export default function BudgetPage() {
           행사: groupPeriodMap[date]['행사'] ?? 0,
         }))
 
+      const catData: CategoryClaimData[] = Object.keys(catPeriodMap)
+        .sort()
+        .map(date => ({ date, details: catPeriodMap[date] }))
+
       setClaimPeriods(periods)
       setGroupClaimData(groupData)
+      setCategoryClaimData(catData)
       setLoading(false)
     }
     load()
@@ -297,16 +316,30 @@ export default function BudgetPage() {
                 {groupClaimData.map((period, idx) => {
                   const d = new Date(period.date)
                   const total = period.목회 + period.양육 + period.사역 + period.행사
+                  const periodKey = period.date
+                  const isExpanded = expandedPeriods.has(periodKey)
+                  const catData = categoryClaimData.find(c => c.date === period.date)
                   return (
                     <div key={idx}>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div
+                        className="flex items-center gap-2 mb-1 cursor-pointer"
+                        onClick={() => {
+                          setExpandedPeriods(prev => {
+                            const next = new Set(prev)
+                            if (next.has(periodKey)) next.delete(periodKey)
+                            else next.add(periodKey)
+                            return next
+                          })
+                        }}
+                      >
+                        <span className="text-xs text-slate-400">{isExpanded ? '▼' : '▶'}</span>
                         <span className="text-xs font-semibold text-slate-600">
                           {d.getFullYear()}. {d.getMonth() + 1}. {d.getDate()}.
                         </span>
                         <span className="text-xs text-slate-400">({claimPeriods.find(p => p.date === period.date)?.receiptCount ?? 0}건)</span>
                         <span className="text-xs font-bold text-slate-700 ml-auto">{formatKRW(total)}</span>
                       </div>
-                      <div className="flex gap-3 flex-wrap pl-2">
+                      <div className="flex gap-3 flex-wrap pl-5">
                         {GROUPS.map(g => {
                           const val = period[g as keyof GroupClaimData] as number
                           if (val === 0) return null
@@ -317,6 +350,26 @@ export default function BudgetPage() {
                           )
                         })}
                       </div>
+                      {isExpanded && catData && (
+                        <div className="pl-5 mt-2 space-y-2">
+                          {GROUPS.map(g => {
+                            const cats = catData.details[g]
+                            if (!cats) return null
+                            const entries = Object.entries(cats).sort((a, b) => b[1] - a[1])
+                            return (
+                              <div key={g} className="space-y-0.5">
+                                <div className="text-xs font-semibold" style={{ color: GROUP_COLORS[g] }}>{g}</div>
+                                {entries.map(([catName, amount]) => (
+                                  <div key={catName} className="flex justify-between pl-3 text-xs text-slate-500">
+                                    <span>{catName}</span>
+                                    <span className="font-medium text-slate-600">{formatKRW(amount)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
