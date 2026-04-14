@@ -50,6 +50,7 @@ export default function BudgetPage() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [claimPeriods, setClaimPeriods] = useState<ClaimPeriodData[]>([])
   const [groupClaimData, setGroupClaimData] = useState<GroupClaimData[]>([])
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set(GROUPS))
 
   useEffect(() => {
     async function load() {
@@ -206,30 +207,6 @@ export default function BudgetPage() {
         const toX = (i: number) => PL + i * xStep
         const toY = (v: number) => PT + chartH - (v / maxY) * chartH
 
-        // 라벨 겹침 방지: 각 포인트에서 그룹별 Y위치를 분산
-        const resolveLabels = (i: number) => {
-          const entries = GROUPS.map(g => ({
-            group: g,
-            val: trendPoints[i].groups[g] ?? 0,
-            y: toY(Math.min(trendPoints[i].groups[g] ?? 0, 120)),
-          })).sort((a, b) => a.y - b.y) // 위에서 아래 순
-
-          const minGap = 11
-          const resolved: Record<string, number> = {}
-
-          for (let j = 0; j < entries.length; j++) {
-            let labelY = entries[j].y - 9
-            if (j > 0) {
-              const prevY = resolved[entries[j - 1].group]
-              if (labelY - prevY < minGap) {
-                labelY = prevY + minGap
-              }
-            }
-            resolved[entries[j].group] = labelY
-          }
-          return resolved
-        }
-
         return (
           <Card>
             <CardHeader className="pb-2">
@@ -246,7 +223,7 @@ export default function BudgetPage() {
                 {trendPoints.map((d, i) => (
                   <text key={i} x={toX(i)} y={H - 8} textAnchor="middle" fontSize={10} fill="#94a3b8">{d.label}</text>
                 ))}
-                {GROUPS.map(group => {
+                {GROUPS.filter(g => selectedGroups.has(g)).map(group => {
                   const color = GROUP_COLORS[group]
                   const points = trendPoints.map((d, i) => `${toX(i)},${toY(Math.min(d.groups[group] ?? 0, 120))}`)
                   return (
@@ -254,12 +231,27 @@ export default function BudgetPage() {
                       <polyline points={points.join(' ')} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
                       {trendPoints.map((d, i) => {
                         const val = d.groups[group] ?? 0
-                        const labelPositions = resolveLabels(i)
+                        const activeGroups = GROUPS.filter(g => selectedGroups.has(g))
+                        const entries = activeGroups.map(g => ({
+                          group: g,
+                          val: trendPoints[i].groups[g] ?? 0,
+                          y: toY(Math.min(trendPoints[i].groups[g] ?? 0, 120)),
+                        })).sort((a, b) => a.y - b.y)
+                        const minGap = 11
+                        const resolved: Record<string, number> = {}
+                        for (let j = 0; j < entries.length; j++) {
+                          let labelY = entries[j].y - 9
+                          if (j > 0) {
+                            const prevY = resolved[entries[j - 1].group]
+                            if (labelY - prevY < minGap) labelY = prevY + minGap
+                          }
+                          resolved[entries[j].group] = labelY
+                        }
                         return (
                           <g key={i}>
                             <circle cx={toX(i)} cy={toY(Math.min(val, 120))} r={4} fill="white" stroke={color} strokeWidth={2} />
                             {(i === trendPoints.length - 1 || trendPoints.length <= 6) && (
-                              <text x={toX(i) + (i === trendPoints.length - 1 ? 18 : 0)} y={labelPositions[group] + 4} textAnchor={i === trendPoints.length - 1 ? 'start' : 'middle'} fontSize={9} fill={color} fontWeight="bold">
+                              <text x={toX(i) + (i === trendPoints.length - 1 ? 18 : 0)} y={resolved[group] + 4} textAnchor={i === trendPoints.length - 1 ? 'start' : 'middle'} fontSize={9} fill={color} fontWeight="bold">
                                 {Math.round(val)}%
                               </text>
                             )}
@@ -270,13 +262,34 @@ export default function BudgetPage() {
                   )
                 })}
               </svg>
-              <div className="flex items-center justify-center gap-4 mt-1">
-                {GROUPS.map(g => (
-                  <div key={g} className="flex items-center gap-1.5">
-                    <div className="w-3 h-0.5 rounded" style={{ backgroundColor: GROUP_COLORS[g] }} />
-                    <span className="text-xs text-slate-500">{g}</span>
-                  </div>
-                ))}
+              <div className="flex items-center justify-center gap-2 mt-2">
+                {GROUPS.map(g => {
+                  const isActive = selectedGroups.has(g)
+                  return (
+                    <button
+                      key={g}
+                      onClick={() => {
+                        setSelectedGroups(prev => {
+                          const next = new Set(prev)
+                          if (next.has(g)) {
+                            if (next.size > 1) next.delete(g) // 최소 1개는 선택
+                          } else {
+                            next.add(g)
+                          }
+                          return next
+                        })
+                      }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                        isActive
+                          ? 'text-white shadow-sm'
+                          : 'text-slate-400 bg-slate-100'
+                      }`}
+                      style={isActive ? { backgroundColor: GROUP_COLORS[g] } : undefined}
+                    >
+                      {g}
+                    </button>
+                  )
+                })}
               </div>
 
               {/* 청구일별 상세 금액 */}
