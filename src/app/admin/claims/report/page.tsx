@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { Receipt, ClaimBatch } from '@/types/database'
 import { formatKRW, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Printer, Loader2 } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Loader2 } from 'lucide-react'
 
 const GROUP_ORDER = ['목회', '양육', '사역', '행사'] as const
 type GroupName = (typeof GROUP_ORDER)[number]
@@ -34,6 +34,7 @@ export default function ClaimReportPage() {
   const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>([])
   const [prevClaimedByGroup, setPrevClaimedByGroup] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -103,6 +104,67 @@ export default function ClaimReportPage() {
     groupedByGroup[groupName][catName].push(r)
   }
 
+  async function downloadPDF() {
+    setPdfLoading(true)
+    try {
+      // CDN에서 라이브러리 동적 로드
+      const [html2canvasModule, jsPDFModule] = await Promise.all([
+        import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js' as any),
+        import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js' as any),
+      ]).catch(async () => {
+        // fallback: script 태그로 로드
+        await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js')
+        await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js')
+        return [null, null]
+      })
+
+      const html2canvas = (window as any).html2canvas
+      const jsPDF = (window as any).jspdf?.jsPDF
+
+      if (!html2canvas || !jsPDF) throw new Error('라이브러리 로드 실패')
+
+      const pages = document.querySelectorAll('[data-pdf-page]')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pdfWidth = 210
+      const pdfHeight = 297
+
+      for (let i = 0; i < pages.length; i++) {
+        const el = pages[i] as HTMLElement
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+        })
+
+        const imgWidth = pdfWidth - 20 // 좌우 여백 10mm
+        const imgHeight = (canvas.height * imgWidth) / canvas.width
+        const imgData = canvas.toDataURL('image/jpeg', 0.95)
+
+        if (i > 0) pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 10, 10, imgWidth, Math.min(imgHeight, pdfHeight - 20))
+      }
+
+      const fileName = `지출결의서_${batch!.year}년${batch!.month}월_${formatDate(batch!.claim_date).replace(/\s/g, '')}.pdf`
+      pdf.save(fileName)
+    } catch (err) {
+      console.error(err)
+      alert('PDF 다운로드에 실패했습니다. 인쇄 기능을 이용해주세요.')
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
+  function loadScript(src: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return }
+      const script = document.createElement('script')
+      script.src = src
+      script.onload = () => resolve()
+      script.onerror = reject
+      document.head.appendChild(script)
+    })
+  }
+
   const claimDateStr = `${batch.year}년 ${String(batch.month).padStart(2, '0')}월 ${formatDate(batch.claim_date).split(' ').pop()}`
 
   return (
@@ -115,10 +177,16 @@ export default function ClaimReportPage() {
             </Link>
             <h1 className="font-semibold text-slate-800">지출결의서 인쇄</h1>
           </div>
-          <Button onClick={() => window.print()} size="sm" className="gap-2">
-            <Printer className="w-4 h-4" />
-            인쇄
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={downloadPDF} size="sm" className="gap-2" disabled={pdfLoading}>
+              {pdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              PDF
+            </Button>
+            <Button onClick={() => window.print()} size="sm" variant="outline" className="gap-2">
+              <Printer className="w-4 h-4" />
+              인쇄
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -138,7 +206,7 @@ export default function ClaimReportPage() {
           const currentBalance = groupBudget - prevClaimed
 
           return (
-            <div key={groupName} className={`bg-white print:bg-transparent ${pageIdx > 0 ? 'mt-8 print:mt-0' : ''}`} style={{ pageBreakBefore: pageIdx > 0 ? 'always' : 'auto' }}>
+            <div key={groupName} data-pdf-page className={`bg-white print:bg-transparent ${pageIdx > 0 ? 'mt-8 print:mt-0' : ''}`} style={{ pageBreakBefore: pageIdx > 0 ? 'always' : 'auto' }}>
               <div className="border-2 border-black p-6 print:p-8">
                 {/* 제목 */}
                 <h1 className="text-2xl font-black text-center tracking-[0.3em] mb-6">지 출 결 의 서</h1>
