@@ -106,7 +106,7 @@ export default function BudgetPage() {
       setItems(result.sort((a, b) => a.category_name.localeCompare(b.category_name, 'ko')))
 
       // 청구된 영수증 기반으로 그룹별 청구일별 집계 (청구일 = claim_batches.claim_date)
-      const claimedReceipts = (claimedReceiptsRes.data ?? []) as { budget_category_id: number; amount: number; receipt_date: string; claim_batch_id: number | null; claim_batches: { claim_date: string } | null }[]
+      const claimedReceipts = (claimedReceiptsRes.data ?? []) as unknown as { budget_category_id: number; amount: number; receipt_date: string; claim_batch_id: number | null; claim_batches: { claim_date: string } | null }[]
       const catMap = new Map(categories.map(c => [c.id, c.group_name as string]))
       const catNameMap = new Map(categories.map(c => [c.id, c.category_name]))
 
