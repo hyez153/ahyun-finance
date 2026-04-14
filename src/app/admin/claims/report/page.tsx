@@ -89,46 +89,18 @@ function ClaimReportContent() {
       setBudgetCategories((budgetRes.data as BudgetCategory[]) ?? [])
 
       if (batchData) {
-        // 현재 배치 이전의 청구 배치들 조회
-        const { data: prevBatches } = await supabase
-          .from('claim_batches')
-          .select('id')
-          .lt('claim_date', batchData.claim_date)
-          .eq('status', 'confirmed')
-
-        const prevBatchIds = (prevBatches ?? []).map(b => b.id)
+        // 현재 배치 이전에 청구된 모든 영수증 (is_claimed=true이고 현재 배치에 속하지 않는 것)
+        const { data: prevReceipts } = await supabase
+          .from('receipts')
+          .select('amount, budget_categories(group_name)')
+          .eq('is_claimed', true)
+          .neq('claim_batch_id', Number(batchId))
 
         const grouped: Record<string, number> = {}
-
-        if (prevBatchIds.length > 0) {
-          const { data: prevReceipts } = await supabase
-            .from('receipts')
-            .select('amount, budget_categories(group_name, category_name)')
-            .in('claim_batch_id', prevBatchIds)
-
-          for (const r of (prevReceipts ?? [])) {
-            const catName = (r as any).budget_categories?.category_name ?? ''
-            if (catName.startsWith('소그룹_')) continue // 소그룹 리더 개별은 제외 (소그룹 운영비에 포함)
-            const g = (r as any).budget_categories?.group_name ?? '기타'
-            grouped[g] = (grouped[g] || 0) + Number(r.amount ?? 0)
-          }
-        }
-
-        // 마이그레이션 데이터 (claim_batch_id 없지만 is_claimed=true, receipt_date < 현재 청구일)
-        const { data: migrationReceipts } = await supabase
-          .from('receipts')
-          .select('amount, budget_categories(group_name, category_name)')
-          .is('claim_batch_id', null)
-          .eq('is_claimed', true)
-          .lt('receipt_date', batchData.claim_date)
-
-        for (const r of (migrationReceipts ?? [])) {
-          const catName = (r as any).budget_categories?.category_name ?? ''
-          if (catName.startsWith('소그룹_')) continue
+        for (const r of (prevReceipts ?? [])) {
           const g = (r as any).budget_categories?.group_name ?? '기타'
           grouped[g] = (grouped[g] || 0) + Number(r.amount ?? 0)
         }
-
         setPrevClaimedByGroup(grouped)
       }
 
