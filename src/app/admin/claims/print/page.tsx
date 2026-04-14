@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, Printer, Loader2 } from 'lucide-react'
 
-export default function ClaimPrintPage() {
+function ClaimPrintContent() {
   const searchParams = useSearchParams()
   const batchId = searchParams.get('batchId')
   const [batch, setBatch] = useState<ClaimBatch | null>(null)
@@ -169,5 +169,17 @@ export default function ClaimPrintPage() {
         }
       `}</style>
     </div>
+  )
+}
+
+export default function ClaimPrintPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+      </div>
+    }>
+      <ClaimPrintContent />
+    </Suspense>
   )
 }

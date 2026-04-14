@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { Suspense, Fragment, useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Receipt, ClaimBatch } from '@/types/database'
 import { formatKRW, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Printer, Download, Loader2 } from 'lucide-react'
+import { ArrowLeft, Download, Loader2 } from 'lucide-react'
 
 const GROUP_ORDER = ['목회', '양육', '사역', '행사'] as const
 type GroupName = (typeof GROUP_ORDER)[number]
@@ -26,7 +26,18 @@ type BudgetCategory = {
   annual_budget: number
 }
 
-export default function ClaimReportPage() {
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return }
+    const script = document.createElement('script')
+    script.src = src
+    script.onload = () => resolve()
+    script.onerror = reject
+    document.head.appendChild(script)
+  })
+}
+
+function ClaimReportContent() {
   const searchParams = useSearchParams()
   const batchId = searchParams.get('batchId')
   const [batch, setBatch] = useState<ClaimBatch | null>(null)
@@ -37,8 +48,7 @@ export default function ClaimReportPage() {
   const [pdfLoading, setPdfLoading] = useState(false)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
 
-  // A4 높이(mm)를 px로 변환 (약 1123px at 96dpi), 여백 제외
-  const A4_HEIGHT_PX = 1050
+  const A4_HEIGHT_PX = 960
 
   const fitPages = useCallback(() => {
     pageRefs.current.forEach(el => {
@@ -55,7 +65,6 @@ export default function ClaimReportPage() {
 
   useEffect(() => {
     if (!loading && batch) {
-      // DOM 렌더 후 스케일 적용
       requestAnimationFrame(fitPages)
     }
   }, [loading, batch, fitPages])
@@ -79,7 +88,6 @@ export default function ClaimReportPage() {
       setReceipts((receiptRes.data as Receipt[]) ?? [])
       setBudgetCategories((budgetRes.data as BudgetCategory[]) ?? [])
 
-      // 이전 청구일 기준 정산 완료된 금액 (현재 배치 청구일 이전 영수증 합계)
       if (batchData) {
         const { data: prevReceipts } = await supabase
           .from('receipts')
@@ -118,7 +126,6 @@ export default function ClaimReportPage() {
     )
   }
 
-  // Group receipts by group_name, then by category
   const groupedByGroup: Record<string, Record<string, Receipt[]>> = {}
   for (const r of receipts) {
     const groupName = r.budget_categories?.group_name ?? '기타'
@@ -131,16 +138,8 @@ export default function ClaimReportPage() {
   async function downloadPDF() {
     setPdfLoading(true)
     try {
-      // CDN에서 라이브러리 동적 로드
-      const [html2canvasModule, jsPDFModule] = await Promise.all([
-        import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js' as any),
-        import(/* webpackIgnore: true */ 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js' as any),
-      ]).catch(async () => {
-        // fallback: script 태그로 로드
-        await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js')
-        await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js')
-        return [null, null]
-      })
+      await loadScript('https://cdn.jsdelivr.net/npm/html2canvas-pro@1.5.8/dist/html2canvas-pro.min.js')
+      await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js')
 
       const html2canvas = (window as any).html2canvas
       const jsPDF = (window as any).jspdf?.jsPDF
@@ -154,42 +153,37 @@ export default function ClaimReportPage() {
 
       for (let i = 0; i < pages.length; i++) {
         const el = pages[i] as HTMLElement
+        // 스케일 임시 제거 후 캡처
+        const prevTransform = el.style.transform
+        el.style.transform = ''
+
         const canvas = await html2canvas(el, {
           scale: 2,
           useCORS: true,
           backgroundColor: '#ffffff',
         })
 
-        const imgWidth = pdfWidth - 20 // 좌우 여백 10mm
+        // 스케일 복원
+        el.style.transform = prevTransform
+
+        const imgWidth = pdfWidth - 16
         const imgHeight = (canvas.height * imgWidth) / canvas.width
-        const imgData = canvas.toDataURL('image/jpeg', 0.95)
+        const finalHeight = Math.min(imgHeight, pdfHeight - 16)
+        const imgData = canvas.toDataURL('image/jpeg', 0.92)
 
         if (i > 0) pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 10, 10, imgWidth, Math.min(imgHeight, pdfHeight - 20))
+        pdf.addImage(imgData, 'JPEG', 8, 8, imgWidth, finalHeight)
       }
 
       const fileName = `지출결의서_${batch!.year}년${batch!.month}월_${formatDate(batch!.claim_date).replace(/\s/g, '')}.pdf`
       pdf.save(fileName)
     } catch (err) {
       console.error(err)
-      alert('PDF 다운로드에 실패했습니다. 인쇄 기능을 이용해주세요.')
+      alert('PDF 다운로드에 실패했습니다.')
     } finally {
       setPdfLoading(false)
     }
   }
-
-  function loadScript(src: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return }
-      const script = document.createElement('script')
-      script.src = src
-      script.onload = () => resolve()
-      script.onerror = reject
-      document.head.appendChild(script)
-    })
-  }
-
-  const claimDateStr = `${batch.year}년 ${String(batch.month).padStart(2, '0')}월 ${formatDate(batch.claim_date).split(' ').pop()}`
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -199,18 +193,12 @@ export default function ClaimReportPage() {
             <Link href="/admin/claims">
               <ArrowLeft className="w-5 h-5 text-slate-500 cursor-pointer hover:text-slate-700" />
             </Link>
-            <h1 className="font-semibold text-slate-800">지출결의서 인쇄</h1>
+            <h1 className="font-semibold text-slate-800">지출결의서</h1>
           </div>
-          <div className="flex gap-2">
-            <Button onClick={downloadPDF} size="sm" className="gap-2" disabled={pdfLoading}>
-              {pdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              PDF
-            </Button>
-            <Button onClick={() => window.print()} size="sm" variant="outline" className="gap-2">
-              <Printer className="w-4 h-4" />
-              인쇄
-            </Button>
-          </div>
+          <Button onClick={downloadPDF} size="sm" className="gap-2" disabled={pdfLoading}>
+            {pdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            PDF 다운로드
+          </Button>
         </div>
       </header>
 
@@ -221,11 +209,9 @@ export default function ClaimReportPage() {
           const groupTotal = Object.values(categories).flat().reduce((s, r) => s + r.amount, 0)
           const section = GROUP_BUDGET_SECTION[groupName]
 
-          // 해당 그룹의 연간 예산 합계 (소그룹_XX 리더별 카테고리는 소그룹 운영비에 포함되므로 제외)
           const groupBudget = budgetCategories
             .filter(bc => bc.group_name === groupName && !bc.category_name.match(/^소그룹_/))
             .reduce((s, bc) => s + Number(bc.annual_budget || 0), 0)
-          // 이전 청구 기준 잔액
           const prevClaimed = prevClaimedByGroup[groupName] || 0
           const currentBalance = groupBudget - prevClaimed
 
@@ -236,10 +222,8 @@ export default function ClaimReportPage() {
                 data-pdf-page
                 className="border-2 border-black p-5 print:p-6 origin-top-left"
               >
-                {/* 제목 */}
                 <h1 className="text-xl font-black text-center tracking-[0.3em] mb-4">지 출 결 의 서</h1>
 
-                {/* 청구/결재 테이블 */}
                 <div className="flex gap-3 mb-3">
                   <table className="border-collapse border border-black text-[10px] flex-1">
                     <tbody>
@@ -279,7 +263,6 @@ export default function ClaimReportPage() {
                   </table>
                 </div>
 
-                {/* 정보 테이블 */}
                 <table className="border-collapse border border-black w-full text-[10px] mb-3">
                   <tbody>
                     <tr>
@@ -318,7 +301,6 @@ export default function ClaimReportPage() {
                   </tbody>
                 </table>
 
-                {/* 세부 내역 */}
                 <table className="border-collapse border border-black w-full text-xs mb-3">
                   <thead>
                     <tr className="bg-gray-50">
@@ -335,16 +317,14 @@ export default function ClaimReportPage() {
                       const catTotal = catReceipts.reduce((s, r) => s + r.amount, 0)
 
                       return (
-                        <>
-                          {/* 카테고리 소계 행 */}
-                          <tr key={`cat-${catName}`} className="bg-gray-50">
+                        <Fragment key={`cat-${catName}`}>
+                          <tr className="bg-gray-50">
                             <td className="border border-black px-2 py-0.5 font-bold">{catIdx + 1}</td>
                             <td className="border border-black px-2 py-0.5 font-bold">{catName}</td>
                             <td className="border border-black px-2 py-0.5 text-[10px] text-slate-500">{catReceipts.length}건</td>
                             <td className="border border-black px-2 py-0.5"></td>
                             <td className="border border-black px-2 py-0.5 text-right font-bold">{formatKRW(catTotal)}</td>
                           </tr>
-                          {/* 개별 영수증 */}
                           {catReceipts.map((r) => (
                             <tr key={r.id}>
                               <td className="border border-black px-2 py-0.5 text-[10px] text-slate-400"></td>
@@ -354,10 +334,9 @@ export default function ClaimReportPage() {
                               <td className="border border-black px-2 py-0.5 text-[10px] text-right">{formatKRW(r.amount)}</td>
                             </tr>
                           ))}
-                        </>
+                        </Fragment>
                       )
                     })}
-                    {/* 합계 */}
                     <tr className="bg-gray-100">
                       <td className="border border-black px-2 py-1 font-bold" colSpan={4}>합계</td>
                       <td className="border border-black px-2 py-1 text-right font-bold text-sm">{formatKRW(groupTotal)}</td>
@@ -365,8 +344,7 @@ export default function ClaimReportPage() {
                   </tbody>
                 </table>
 
-                {/* 하단 확인 */}
-                <p className="text-center text-xs mt-4">
+                <p className="text-center text-xs mt-6 mb-2">
                   {formatDate(batch.claim_date)} 지급처리확인
                 </p>
               </div>
@@ -374,17 +352,19 @@ export default function ClaimReportPage() {
           )
         })}
       </div>
-
-      <style jsx>{`
-        @media print {
-          body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          @page { margin: 8mm; size: A4; }
-          thead { display: table-header-group; }
-          tr { break-inside: avoid; }
-          table { break-inside: auto; }
-          [data-pdf-page] { page-break-after: always; page-break-inside: avoid; }
-        }
-      `}</style>
     </div>
+  )
+}
+
+// Suspense로 감싸서 useSearchParams 크래시 방지
+export default function ClaimReportPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+      </div>
+    }>
+      <ClaimReportContent />
+    </Suspense>
   )
 }
