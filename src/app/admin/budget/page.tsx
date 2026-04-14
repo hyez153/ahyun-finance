@@ -157,8 +157,26 @@ export default function BudgetPage() {
     load()
   }, [])
 
-  const mainItems = items.filter(i => !i.isLeader)
   const leaderItems = items.filter(i => i.isLeader)
+  const leaderConfirmedTotal = leaderItems.reduce((s, c) => s + c.confirmed, 0)
+  const leaderPendingTotal = leaderItems.reduce((s, c) => s + c.pending, 0)
+
+  // 소그룹 운영비 항목에 리더별 합산 반영
+  const mainItems = items.filter(i => !i.isLeader).map(item => {
+    if (item.category_name === '소그룹 운영비') {
+      const confirmed = leaderConfirmedTotal
+      const pending = leaderPendingTotal
+      const remaining = item.annual_budget - confirmed - pending
+      return {
+        ...item,
+        confirmed,
+        pending,
+        remaining,
+        usage_rate: item.annual_budget > 0 ? Math.round(((confirmed + pending) / item.annual_budget) * 100) : 0,
+      }
+    }
+    return item
+  })
 
   const totalBudget = mainItems.reduce((s, c) => s + c.annual_budget, 0)
   const totalConfirmed = mainItems.reduce((s, c) => s + c.confirmed, 0)
