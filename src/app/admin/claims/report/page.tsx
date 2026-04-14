@@ -89,16 +89,43 @@ function ClaimReportContent() {
       setBudgetCategories((budgetRes.data as BudgetCategory[]) ?? [])
 
       if (batchData) {
-        const { data: prevReceipts } = await supabase
-          .from('receipts')
-          .select('amount, budget_categories(group_name)')
-          .lt('receipt_date', batchData.claim_date)
+        // 현재 배치 이전의 청구 배치들 조회
+        const { data: prevBatches } = await supabase
+          .from('claim_batches')
+          .select('id')
+          .lt('claim_date', batchData.claim_date)
+          .eq('status', 'confirmed')
+
+        const prevBatchIds = (prevBatches ?? []).map(b => b.id)
 
         const grouped: Record<string, number> = {}
-        for (const r of (prevReceipts ?? [])) {
+
+        if (prevBatchIds.length > 0) {
+          // 이전 배치에 속한 영수증만 조회
+          const { data: prevReceipts } = await supabase
+            .from('receipts')
+            .select('amount, budget_categories(group_name)')
+            .in('claim_batch_id', prevBatchIds)
+
+          for (const r of (prevReceipts ?? [])) {
+            const g = (r as any).budget_categories?.group_name ?? '기타'
+            grouped[g] = (grouped[g] || 0) + Number(r.amount ?? 0)
+          }
+        }
+
+        // 마이그레이션 데이터 (claim_batch_id 없지만 is_claimed=true, receipt_date < 현재 청구일)
+        const { data: migrationReceipts } = await supabase
+          .from('receipts')
+          .select('amount, budget_categories(group_name)')
+          .is('claim_batch_id', null)
+          .eq('is_claimed', true)
+          .lt('receipt_date', batchData.claim_date)
+
+        for (const r of (migrationReceipts ?? [])) {
           const g = (r as any).budget_categories?.group_name ?? '기타'
           grouped[g] = (grouped[g] || 0) + Number(r.amount ?? 0)
         }
+
         setPrevClaimedByGroup(grouped)
       }
 
