@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Upload, Loader2 } from 'lucide-react'
+import { ArrowLeft, Upload, Loader2, Camera } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCurrentCycleLabel } from '@/lib/claim-cycle'
 
@@ -160,6 +160,54 @@ export default function NewReceiptPage() {
       toast.error('제출 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 이미지 압축 함수 (최대 1280px, 품질 0.6)
+  async function compressImage(file: File, maxWidth = 1280, quality = 0.6): Promise<File> {
+    if (file.type === 'application/pdf') return file // PDF는 압축하지 않음
+
+    return new Promise((resolve) => {
+      const img = new Image()
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          let { width, height } = img
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width
+            width = maxWidth
+          }
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')!
+          ctx.drawImage(img, 0, 0, width, height)
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' })
+                resolve(compressed)
+              } else {
+                resolve(file)
+              }
+            },
+            'image/jpeg',
+            quality
+          )
+        }
+        img.src = e.target?.result as string
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function handleFileSelect(selectedFile: File) {
+    const compressed = await compressImage(selectedFile)
+    setFile(compressed)
+    // 원본 대비 압축률 표시
+    if (selectedFile.type !== 'application/pdf' && compressed.size < selectedFile.size) {
+      const saved = Math.round((1 - compressed.size / selectedFile.size) * 100)
+      toast.success(`이미지 압축 완료 (${saved}% 절약)`)
     }
   }
 
@@ -384,22 +432,63 @@ export default function NewReceiptPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm text-slate-600">영수증 파일 *</CardTitle>
             </CardHeader>
-            <CardContent>
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
-                <Upload className="w-6 h-6 text-slate-400 mb-2" />
-                {file ? (
-                  <span className="text-sm text-slate-700 font-medium">{file.name}</span>
-                ) : (
-                  <span className="text-sm text-slate-400">클릭하여 파일 선택</span>
-                )}
-                <span className="text-xs text-slate-300 mt-1">JPG, PNG, PDF 지원</span>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  className="hidden"
-                  onChange={e => setFile(e.target.files?.[0] ?? null)}
-                />
-              </label>
+            <CardContent className="space-y-3">
+              {file ? (
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
+                  {file.type.startsWith('image/') && (
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt="미리보기"
+                      className="w-16 h-20 object-cover rounded border"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-700 truncate">{file.name}</p>
+                    <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFile(null)}
+                    className="text-xs text-red-400 hover:text-red-600 shrink-0"
+                  >
+                    삭제
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* 카메라 촬영 */}
+                  <label className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-blue-200 rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
+                    <Camera className="w-6 h-6 text-blue-400 mb-1.5" />
+                    <span className="text-sm font-medium text-blue-500">카메라 촬영</span>
+                    <span className="text-xs text-blue-300 mt-0.5">바로 찍어서 올리기</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        if (f) handleFileSelect(f)
+                      }}
+                    />
+                  </label>
+                  {/* 파일 선택 */}
+                  <label className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+                    <Upload className="w-6 h-6 text-slate-400 mb-1.5" />
+                    <span className="text-sm font-medium text-slate-500">파일 선택</span>
+                    <span className="text-xs text-slate-300 mt-0.5">JPG, PNG, PDF</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        if (f) handleFileSelect(f)
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
             </CardContent>
           </Card>
 
