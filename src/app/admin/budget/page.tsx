@@ -66,7 +66,7 @@ export default function BudgetPage() {
         supabase.from('budget_categories').select('*'),
         supabase.from('budget_transactions').select('budget_category_id, amount'),
         supabase.from('receipts').select('budget_category_id, amount').eq('status', 'submitted').eq('is_claimed', false),
-        supabase.from('receipts').select('budget_category_id, amount, receipt_date').eq('is_claimed', true),
+        supabase.from('receipts').select('budget_category_id, amount, receipt_date, claim_batch_id, claim_batches(claim_date)').eq('is_claimed', true),
       ])
 
       const categories = (catRes.data ?? []) as import('@/types/database').BudgetCategory[]
@@ -105,8 +105,8 @@ export default function BudgetPage() {
 
       setItems(result.sort((a, b) => a.category_name.localeCompare(b.category_name, 'ko')))
 
-      // 청구된 영수증 기반으로 그룹별 청구일별 집계
-      const claimedReceipts = (claimedReceiptsRes.data ?? []) as { budget_category_id: number; amount: number; receipt_date: string }[]
+      // 청구된 영수증 기반으로 그룹별 청구일별 집계 (청구일 = claim_batches.claim_date)
+      const claimedReceipts = (claimedReceiptsRes.data ?? []) as { budget_category_id: number; amount: number; receipt_date: string; claim_batch_id: number | null; claim_batches: { claim_date: string } | null }[]
       const catMap = new Map(categories.map(c => [c.id, c.group_name as string]))
       const catNameMap = new Map(categories.map(c => [c.id, c.category_name]))
 
@@ -115,7 +115,9 @@ export default function BudgetPage() {
       const catPeriodMap: Record<string, Record<string, Record<string, number>>> = {} // date -> group -> category -> amount
 
       for (const r of claimedReceipts) {
-        const date = r.receipt_date
+        // 배치가 있으면 claim_date 사용, 없으면(마이그레이션) receipt_date가 청구일
+        const date = r.claim_batches?.claim_date ?? r.receipt_date
+        if (!date) continue
         const group = catMap.get(r.budget_category_id) ?? '기타'
         const catName = catNameMap.get(r.budget_category_id) ?? '기타'
         const amt = Number(r.amount || 0)
