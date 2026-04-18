@@ -280,7 +280,13 @@ export default function NewReceiptPage() {
                   required={!showLeaderSelect}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="항목 선택" />
+                    <SelectValue placeholder="항목 선택">
+                      {(() => {
+                        if (showLeaderSelect) return '소그룹 운영비'
+                        const selected = mainCategories.find(c => String(c.id) === form.budget_category_id)
+                        return selected ? selected.category_name : null
+                      })()}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {grouped.map(({ group, items }) =>
@@ -308,7 +314,12 @@ export default function NewReceiptPage() {
                     required
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="리더 선택" />
+                      <SelectValue placeholder="리더 선택">
+                        {(() => {
+                          const selected = leaderCategories.find(c => String(c.id) === form.budget_category_id)
+                          return selected ? selected.category_name.replace('소그룹_', '') : null
+                        })()}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {leaderCategories.map(c => (
