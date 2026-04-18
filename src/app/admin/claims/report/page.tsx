@@ -89,19 +89,26 @@ function ClaimReportContent() {
       setBudgetCategories((budgetRes.data as BudgetCategory[]) ?? [])
 
       if (batchData) {
-        // 현재 배치 이전에 청구된 모든 영수증 (is_claimed=true이고 현재 배치가 아닌 것)
-        // claim_batch_id가 NULL(마이그레이션)이거나 현재 배치가 아닌 것
-        const { data: prevReceipts } = await supabase
-          .from('receipts')
-          .select('amount, claim_batch_id, budget_categories(group_name)')
-          .eq('is_claimed', true)
+        // 직전 청구까지 정산된 금액: 현재 배치의 claim_date보다 이전인 배치의 영수증만 합산
+        const { data: prevBatches } = await supabase
+          .from('claim_batches')
+          .select('id')
+          .lt('claim_date', batchData.claim_date)
+
+        const prevBatchIds = (prevBatches ?? []).map(b => b.id)
 
         const grouped: Record<string, number> = {}
-        for (const r of (prevReceipts ?? [])) {
-          // 현재 배치 영수증은 제외
-          if ((r as any).claim_batch_id === Number(batchId)) continue
-          const g = (r as any).budget_categories?.group_name ?? '기타'
-          grouped[g] = (grouped[g] || 0) + Number(r.amount ?? 0)
+        if (prevBatchIds.length > 0) {
+          const { data: prevReceipts } = await supabase
+            .from('receipts')
+            .select('amount, budget_categories(group_name)')
+            .eq('is_claimed', true)
+            .in('claim_batch_id', prevBatchIds)
+
+          for (const r of (prevReceipts ?? [])) {
+            const g = (r as any).budget_categories?.group_name ?? '기타'
+            grouped[g] = (grouped[g] || 0) + Number(r.amount ?? 0)
+          }
         }
         setPrevClaimedByGroup(grouped)
       }
