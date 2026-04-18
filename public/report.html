@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>아현젊은이교회 예산 분석 리포트</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f5f6f8; color:#1a1a1a; }
+  .header { background:#fff; border-bottom:1px solid #e0e0e0; padding:20px 24px; }
+  .header h1 { font-size:20px; font-weight:700; color:#1a1a1a; }
+  .header p { font-size:13px; color:#888; margin-top:4px; }
+  .tabs { display:flex; gap:4px; background:#fff; border-bottom:1px solid #e0e0e0; padding:0 24px; }
+  .tab { padding:10px 16px; font-size:14px; cursor:pointer; border-bottom:2px solid transparent; color:#888; transition:all .2s; }
+  .tab:hover { color:#1b3a5c; }
+  .tab.active { color:#1b3a5c; border-bottom-color:#1b3a5c; font-weight:600; }
+  .content { max-width:1200px; margin:0 auto; padding:24px; }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-bottom:24px; }
+  .card { background:#fff; border-radius:10px; padding:20px; border:1px solid #e0e0e0; }
+  .card h3 { font-size:12px; color:#888; font-weight:500; margin-bottom:6px; text-transform:uppercase; letter-spacing:.5px; }
+  .card .value { font-size:26px; font-weight:700; color:#1a1a1a; }
+  .card .sub { font-size:12px; color:#aaa; margin-top:4px; }
+  .card .value.danger { color:#c0392b; }
+  .section { background:#fff; border-radius:10px; padding:24px; border:1px solid #e0e0e0; margin-bottom:24px; }
+  .section h2 { font-size:15px; font-weight:700; margin-bottom:16px; color:#1a1a1a; }
+  .chart-container { position:relative; height:350px; }
+  .chart-container-sm { position:relative; height:280px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; padding:10px 12px; background:#fafafa; border-bottom:1px solid #e0e0e0; font-weight:600; color:#555; font-size:12px; }
+  td { padding:10px 12px; border-bottom:1px solid #f0f0f0; }
+  tr:hover td { background:#fafafa; }
+  .text-right { text-align:right; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .progress-bar { height:6px; background:#eee; border-radius:99px; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:99px; transition:width .3s; }
+  .loading { text-align:center; padding:60px; color:#aaa; font-size:14px; }
+  .rank-num { display:inline-block; width:20px; font-size:12px; font-weight:700; color:#888; margin-right:4px; text-align:center; }
+  .sogroup-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
+  .sogroup-card { background:#fafafa; border:1px solid #e0e0e0; border-radius:8px; padding:14px; }
+  .sogroup-card .name { font-size:14px; font-weight:600; color:#1a1a1a; }
+  .sogroup-card .amount { font-size:20px; font-weight:700; margin-top:4px; color:#1a1a1a; }
+  .sogroup-card .detail { font-size:11px; color:#aaa; margin-top:4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>아현젊은이교회 예산 분석 리포트</h1>
+  <p id="reportDate"></p>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('overview')">전체 개요</div>
+  <div class="tab" onclick="switchTab('period')">청구주기별 분석</div>
+  <div class="tab" onclick="switchTab('category')">항목별 분석</div>
+  <div class="tab" onclick="switchTab('sogroup')">소그룹 운영비</div>
+</div>
+
+<div class="content">
+  <div id="loading" class="loading">데이터를 불러오는 중...</div>
+  <div id="tab-overview" class="tab-content"></div>
+  <div id="tab-period" class="tab-content"></div>
+  <div id="tab-category" class="tab-content"></div>
+  <div id="tab-sogroup" class="tab-content"></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://nxeluerzvqbwptqdrfmt.supabase.co'
+const SUPABASE_KEY = 'sb_publishable_bKbp1NranSnbuH0DQvdSKw_Fet71qgh'
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+// 3색 팔레트: 네이비, 그레이, (검정은 텍스트), 빨간색=포인트
+const NAVY = '#1b3a5c'
+const NAVY_LIGHT = '#2d5f8a'
+const NAVY_PALE = '#d6e4f0'
+const GRAY = '#94a3b8'
+const GRAY_LIGHT = '#cbd5e1'
+const RED = '#c0392b'
+
+// 그룹별: 네이비 명도 차이만
+const GROUP_COLORS = { '목회':NAVY, '양육':NAVY_LIGHT, '사역':'#4a7faa', '행사':GRAY }
+const GROUP_BADGE_BG = { '목회':'#e8eef4', '양육':'#eaf0f6', '사역':'#ecf2f8', '행사':'#f0f0f0' }
+const GROUP_ORDER = ['목회','양육','사역','행사']
+
+const fmt = n => new Intl.NumberFormat('ko-KR').format(n) + '원'
+const fmtShort = n => {
+  if (n >= 10000) return (n/10000).toFixed(n%10000===0?0:1) + '만'
+  return new Intl.NumberFormat('ko-KR').format(n)
+}
+
+let charts = []
+
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const tabs = ['overview','period','category','sogroup']
+    t.classList.toggle('active', tabs[i]===id)
+  })
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'))
+  document.getElementById('tab-'+id).classList.add('active')
+}
+
+async function loadData() {
+  const [catRes, receiptRes, batchRes] = await Promise.all([
+    sb.from('budget_categories').select('*'),
+    sb.from('receipts').select('id, amount, budget_category_id, receipt_date, claim_batch_id, is_claimed, payer_name, submitter_name, vendor_name, memo, budget_categories(group_name, category_name), claim_batches(claim_date)').eq('is_claimed', true),
+    sb.from('claim_batches').select('*').order('claim_date'),
+  ])
+
+  const categories = catRes.data || []
+  const receipts = receiptRes.data || []
+
+  document.getElementById('reportDate').textContent = `${new Date().toLocaleDateString('ko-KR')} 기준 · 청구완료 영수증 ${receipts.length}건`
+  document.getElementById('loading').style.display = 'none'
+
+  const mainCats = categories.filter(c => !c.category_name.startsWith('소그룹_'))
+  const leaderCats = categories.filter(c => c.category_name.startsWith('소그룹_'))
+
+  const groupData = {}
+  GROUP_ORDER.forEach(g => { groupData[g] = { budget:0, used:0, items:{} } })
+
+  mainCats.forEach(c => {
+    const g = c.group_name
+    if (!groupData[g]) return
+    groupData[g].budget += c.annual_budget || 0
+    groupData[g].items[c.category_name] = { budget: c.annual_budget||0, used:0, count:0 }
+  })
+
+  const leaderData = {}
+  leaderCats.forEach(c => {
+    leaderData[c.id] = { name: c.category_name.replace('소그룹_','').replace(/^\d+\s*/,''), used:0, count:0, periods:{} }
+  })
+
+  const periodData = {}
+
+  receipts.forEach(r => {
+    const cat = r.budget_categories
+    if (!cat) return
+    const g = cat.group_name
+    const cn = cat.category_name
+    const amt = Number(r.amount||0)
+    const claimDate = r.claim_batches?.claim_date || r.receipt_date
+
+    if (cn.startsWith('소그룹_')) {
+      if (leaderData[r.budget_category_id]) {
+        leaderData[r.budget_category_id].used += amt
+        leaderData[r.budget_category_id].count++
+        if (!leaderData[r.budget_category_id].periods[claimDate])
+          leaderData[r.budget_category_id].periods[claimDate] = 0
+        leaderData[r.budget_category_id].periods[claimDate] += amt
+      }
+      if (groupData['양육']) {
+        groupData['양육'].used += amt
+        if (!groupData['양육'].items['소그룹 운영비'])
+          groupData['양육'].items['소그룹 운영비'] = { budget:0, used:0, count:0 }
+        groupData['양육'].items['소그룹 운영비'].used += amt
+        groupData['양육'].items['소그룹 운영비'].count++
+      }
+    } else {
+      if (groupData[g] && groupData[g].items[cn]) {
+        groupData[g].items[cn].used += amt
+        groupData[g].items[cn].count++
+        groupData[g].used += amt
+      }
+    }
+
+    if (!periodData[claimDate]) periodData[claimDate] = { total:0, groups:{}, categories:{} }
+    periodData[claimDate].total += amt
+    periodData[claimDate].groups[g] = (periodData[claimDate].groups[g]||0) + amt
+    const catKey = cn.startsWith('소그룹_') ? '소그룹 운영비' : cn
+    periodData[claimDate].categories[catKey] = (periodData[claimDate].categories[catKey]||0) + amt
+  })
+
+  renderOverview(groupData)
+  renderPeriod(periodData)
+  renderCategory(groupData)
+  renderSogroup(leaderData, periodData)
+
+  document.getElementById('tab-overview').classList.add('active')
+}
+
+function renderOverview(groupData) {
+  const totalBudget = GROUP_ORDER.reduce((s,g) => s + groupData[g].budget, 0)
+  const totalUsed = GROUP_ORDER.reduce((s,g) => s + groupData[g].used, 0)
+  const totalRate = totalBudget > 0 ? Math.round(totalUsed/totalBudget*100) : 0
+  const remaining = totalBudget - totalUsed
+
+  let html = `
+    <div class="grid">
+      <div class="card"><h3>총 예산</h3><div class="value">${fmt(totalBudget)}</div></div>
+      <div class="card"><h3>총 사용</h3><div class="value">${fmt(totalUsed)}</div><div class="sub">집행률 ${totalRate}%</div></div>
+      <div class="card"><h3>잔액</h3><div class="value${remaining<0?' danger':''}">${fmt(remaining)}</div></div>
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;">
+      <div class="section"><h2>그룹별 예산 vs 사용</h2><div class="chart-container"><canvas id="overviewBar"></canvas></div></div>
+      <div class="section"><h2>그룹별 사용 비율</h2><div class="chart-container"><canvas id="overviewPie"></canvas></div></div>
+    </div>
+    <div class="section"><h2>그룹별 상세</h2>
+      <table><thead><tr><th>그룹</th><th class="text-right">예산</th><th class="text-right">사용</th><th class="text-right">잔액</th><th style="width:200px">집행률</th></tr></thead><tbody>`
+
+  GROUP_ORDER.forEach(g => {
+    const d = groupData[g]
+    const rate = d.budget>0 ? Math.round(d.used/d.budget*100) : 0
+    const rem = d.budget - d.used
+    const overBudget = rem < 0
+    html += `<tr>
+      <td><span class="badge" style="background:${GROUP_BADGE_BG[g]};color:${GROUP_COLORS[g]}">${g}</span></td>
+      <td class="text-right">${fmt(d.budget)}</td>
+      <td class="text-right" style="font-weight:600">${fmt(d.used)}</td>
+      <td class="text-right" style="color:${overBudget?RED:'#1a1a1a'};font-weight:${overBudget?'600':'400'}">${fmt(rem)}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${Math.min(rate,100)}%;background:${rate>100?RED:NAVY}"></div></div>
+        <span style="font-size:12px;font-weight:600;color:${rate>100?RED:'#555'}">${rate}%</span>
+      </div></td>
+    </tr>`
+  })
+
+  html += '</tbody></table></div>'
+  document.getElementById('tab-overview').innerHTML = html
+
+  charts.push(new Chart(document.getElementById('overviewBar').getContext('2d'), {
+    type:'bar',
+    data:{
+      labels: GROUP_ORDER,
+      datasets:[
+        { label:'예산', data:GROUP_ORDER.map(g=>groupData[g].budget), backgroundColor:GRAY_LIGHT, borderRadius:4 },
+        { label:'사용', data:GROUP_ORDER.map(g=>groupData[g].used), backgroundColor:GROUP_ORDER.map(g=>GROUP_COLORS[g]), borderRadius:4 },
+      ]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:'top',labels:{font:{size:12}}} }, scales:{ y:{ ticks:{ callback:v=>fmtShort(v) }, grid:{color:'#f0f0f0'} }, x:{grid:{display:false}} } }
+  }))
+
+  charts.push(new Chart(document.getElementById('overviewPie').getContext('2d'), {
+    type:'doughnut',
+    data:{
+      labels: GROUP_ORDER,
+      datasets:[{ data:GROUP_ORDER.map(g=>groupData[g].used), backgroundColor:GROUP_ORDER.map(g=>GROUP_COLORS[g]) }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:'right'}, tooltip:{ callbacks:{ label:ctx=>`${ctx.label}: ${fmt(ctx.raw)}` } } } }
+  }))
+}
+
+function renderPeriod(periodData) {
+  const periods = Object.keys(periodData).sort()
+
+  let html = `
+    <div class="section"><h2>청구주기별 총액 추이</h2><div class="chart-container"><canvas id="periodLine"></canvas></div></div>
+    <div class="section"><h2>청구주기별 그룹 비교</h2><div class="chart-container"><canvas id="periodStack"></canvas></div></div>
+    <div class="section"><h2>청구주기별 상세 내역</h2>
+      <table><thead><tr><th>청구일</th>${GROUP_ORDER.map(g=>`<th class="text-right">${g}</th>`).join('')}<th class="text-right" style="font-weight:700">합계</th></tr></thead><tbody>`
+
+  let grandTotal = 0
+  const groupTotals = {}
+  GROUP_ORDER.forEach(g => groupTotals[g] = 0)
+
+  periods.forEach(p => {
+    const d = periodData[p]
+    html += `<tr><td style="font-weight:600">${p}</td>`
+    GROUP_ORDER.forEach(g => {
+      const v = d.groups[g]||0
+      groupTotals[g] += v
+      html += `<td class="text-right">${v>0?fmt(v):'-'}</td>`
+    })
+    grandTotal += d.total
+    html += `<td class="text-right" style="font-weight:700">${fmt(d.total)}</td></tr>`
+  })
+
+  html += `<tr style="background:#fafafa;font-weight:700"><td>합계</td>`
+  GROUP_ORDER.forEach(g => html += `<td class="text-right">${fmt(groupTotals[g])}</td>`)
+  html += `<td class="text-right">${fmt(grandTotal)}</td></tr></tbody></table></div>`
+
+  // Top 항목
+  html += '<div class="section"><h2>청구주기별 Top 항목</h2>'
+  periods.forEach(p => {
+    const d = periodData[p]
+    const sorted = Object.entries(d.categories).sort((a,b)=>b[1]-a[1]).slice(0,5)
+    html += `<div style="margin-bottom:16px"><h3 style="font-size:14px;font-weight:600;margin-bottom:8px;color:#1a1a1a">${p} <span style="color:#aaa;font-weight:400">(${fmt(d.total)})</span></h3>`
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    sorted.forEach(([name,amt]) => {
+      const pct = Math.round(amt/d.total*100)
+      html += `<div style="background:#fafafa;border:1px solid #e0e0e0;border-radius:6px;padding:8px 12px;min-width:140px">
+        <div style="font-size:12px;color:#888">${name}</div>
+        <div style="font-size:16px;font-weight:700;color:#1a1a1a">${fmt(amt)}</div>
+        <div style="font-size:11px;color:#aaa">${pct}%</div>
+      </div>`
+    })
+    html += '</div></div>'
+  })
+  html += '</div>'
+  document.getElementById('tab-period').innerHTML = html
+
+  charts.push(new Chart(document.getElementById('periodLine').getContext('2d'), {
+    type:'line',
+    data:{ labels:periods, datasets:[{
+      label:'총 청구액', data:periods.map(p=>periodData[p].total),
+      borderColor:NAVY, backgroundColor:NAVY_PALE, fill:true, tension:.3, pointRadius:4, pointBackgroundColor:NAVY
+    }] },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f0f0f0'}}, x:{grid:{display:false}} } }
+  }))
+
+  charts.push(new Chart(document.getElementById('periodStack').getContext('2d'), {
+    type:'bar',
+    data:{ labels:periods, datasets:GROUP_ORDER.map(g=>({
+      label:g, data:periods.map(p=>(periodData[p].groups[g]||0)), backgroundColor:GROUP_COLORS[g], borderRadius:3
+    })) },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top',labels:{font:{size:12}}}}, scales:{ x:{stacked:true,grid:{display:false}}, y:{stacked:true,ticks:{callback:v=>fmtShort(v)},grid:{color:'#f0f0f0'}} } }
+  }))
+}
+
+function renderCategory(groupData) {
+  const allItems = []
+  GROUP_ORDER.forEach(g => {
+    Object.entries(groupData[g].items).forEach(([name, d]) => {
+      if (d.used > 0) allItems.push({ name, group:g, ...d })
+    })
+  })
+  allItems.sort((a,b) => b.used - a.used)
+
+  let html = `<div class="section">
+    <h2>사용 금액 순위 (전체)</h2>
+    <div class="chart-container" style="height:${Math.max(300, allItems.length*35)}px"><canvas id="catRank"></canvas></div>
+  </div>`
+
+  GROUP_ORDER.forEach(g => {
+    const items = Object.entries(groupData[g].items).map(([name,d])=>({name,...d})).sort((a,b)=>b.used-a.used)
+
+    html += `<div class="section">
+      <h2><span class="badge" style="background:${GROUP_BADGE_BG[g]};color:${GROUP_COLORS[g]}">${g}</span> 세부 항목</h2>
+      <table><thead><tr><th>#</th><th>항목</th><th class="text-right">예산</th><th class="text-right">사용</th><th class="text-right">잔액</th><th style="width:160px">집행률</th></tr></thead><tbody>`
+
+    items.forEach((item, i) => {
+      const rate = item.budget>0 ? Math.round(item.used/item.budget*100) : 0
+      const rem = item.budget - item.used
+      const overBudget = rem < 0
+      html += `<tr>
+        <td><span class="rank-num">${i+1}</span></td>
+        <td style="font-weight:500">${item.name}</td>
+        <td class="text-right">${fmt(item.budget)}</td>
+        <td class="text-right" style="font-weight:600">${fmt(item.used)}</td>
+        <td class="text-right" style="color:${overBudget?RED:'#1a1a1a'}">${fmt(rem)}</td>
+        <td><div style="display:flex;align-items:center;gap:6px">
+          <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${Math.min(rate,100)}%;background:${rate>100?RED:NAVY}"></div></div>
+          <span style="font-size:11px;font-weight:600;color:${rate>100?RED:'#555'}">${rate}%</span>
+        </div></td>
+      </tr>`
+    })
+    html += '</tbody></table></div>'
+  })
+
+  document.getElementById('tab-category').innerHTML = html
+
+  // 단일 네이비 색상 — 그룹 구분 불필요
+  charts.push(new Chart(document.getElementById('catRank').getContext('2d'), {
+    type:'bar',
+    data:{ labels:allItems.map(i=>i.name), datasets:[{
+      data:allItems.map(i=>i.used), backgroundColor:NAVY, borderRadius:3
+    }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>`${fmt(ctx.raw)}`}} },
+      scales:{ x:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f0f0f0'}}, y:{grid:{display:false}} }
+    }
+  }))
+}
+
+function renderSogroup(leaderData, periodData) {
+  const leaders = Object.values(leaderData).sort((a,b)=>b.used-a.used)
+  const totalSogroup = leaders.reduce((s,l)=>s+l.used, 0)
+  const totalCount = leaders.reduce((s,l)=>s+l.count, 0)
+  const periods = Object.keys(periodData).sort()
+  const sogroupPeriods = {}
+  periods.forEach(p => { sogroupPeriods[p] = leaders.reduce((s,l) => s + (l.periods[p]||0), 0) })
+
+  let html = `
+    <div class="grid">
+      <div class="card"><h3>소그룹 총 사용</h3><div class="value">${fmt(totalSogroup)}</div><div class="sub">리더 ${leaders.length}명</div></div>
+      <div class="card"><h3>리더당 평균</h3><div class="value">${fmt(leaders.length>0?Math.round(totalSogroup/leaders.length):0)}</div></div>
+      <div class="card"><h3>건당 평균</h3><div class="value">${fmt(totalCount>0?Math.round(totalSogroup/totalCount):0)}</div><div class="sub">총 ${totalCount}건</div></div>
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;">
+      <div class="section"><h2>리더별 사용 비교</h2><div class="chart-container"><canvas id="sogroupBar"></canvas></div></div>
+      <div class="section"><h2>리더별 비율</h2><div class="chart-container"><canvas id="sogroupPie"></canvas></div></div>
+    </div>
+    <div class="section"><h2>청구주기별 소그룹 운영비 추이</h2><div class="chart-container-sm"><canvas id="sogroupLine"></canvas></div></div>
+    <div class="section"><h2>리더별 청구주기 상세</h2>
+      <table><thead><tr><th>리더</th>${periods.map(p=>`<th class="text-right">${p}</th>`).join('')}<th class="text-right" style="font-weight:700">합계</th></tr></thead><tbody>`
+
+  leaders.forEach((l,i) => {
+    html += `<tr><td><span class="rank-num">${i+1}</span>${l.name}</td>`
+    periods.forEach(p => {
+      const v = l.periods[p]||0
+      html += `<td class="text-right">${v>0?fmt(v):'-'}</td>`
+    })
+    html += `<td class="text-right" style="font-weight:700">${fmt(l.used)}</td></tr>`
+  })
+
+  html += `<tr style="background:#fafafa;font-weight:700"><td>합계</td>`
+  periods.forEach(p => html += `<td class="text-right">${fmt(sogroupPeriods[p]||0)}</td>`)
+  html += `<td class="text-right">${fmt(totalSogroup)}</td></tr></tbody></table></div>`
+
+  html += '<div class="section"><h2>리더별 요약</h2><div class="sogroup-grid">'
+  leaders.forEach(l => {
+    const pct = totalSogroup>0 ? Math.round(l.used/totalSogroup*100) : 0
+    html += `<div class="sogroup-card">
+      <div class="name">${l.name}</div>
+      <div class="amount">${fmt(l.used)}</div>
+      <div class="detail">${l.count}건 · 전체의 ${pct}%</div>
+    </div>`
+  })
+  html += '</div></div>'
+  document.getElementById('tab-sogroup').innerHTML = html
+
+  // 리더별: 네이비 명도 그라데이션
+  const leaderColors = leaders.map((_,i) => {
+    const lightness = 25 + Math.round(i * (40 / Math.max(leaders.length-1, 1)))
+    return `hsl(210, 45%, ${lightness}%)`
+  })
+
+  charts.push(new Chart(document.getElementById('sogroupBar').getContext('2d'), {
+    type:'bar',
+    data:{ labels:leaders.map(l=>l.name), datasets:[{data:leaders.map(l=>l.used), backgroundColor:leaderColors, borderRadius:4}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}} }
+  }))
+
+  charts.push(new Chart(document.getElementById('sogroupPie').getContext('2d'), {
+    type:'doughnut',
+    data:{ labels:leaders.map(l=>l.name), datasets:[{data:leaders.map(l=>l.used), backgroundColor:leaderColors}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:'right',labels:{font:{size:11}}}, tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${fmt(ctx.raw)}`}} } }
+  }))
+
+  charts.push(new Chart(document.getElementById('sogroupLine').getContext('2d'), {
+    type:'line',
+    data:{ labels:periods, datasets:[{
+      label:'소그룹 운영비', data:periods.map(p=>sogroupPeriods[p]||0),
+      borderColor:NAVY, backgroundColor:NAVY_PALE, fill:true, tension:.3, pointRadius:4, pointBackgroundColor:NAVY
+    }] },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f0f0f0'}},x:{grid:{display:false}}} }
+  }))
+}
+
+loadData()
+</script>
+</body>
+</html>
