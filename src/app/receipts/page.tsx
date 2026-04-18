@@ -61,6 +61,7 @@ export default function ReceiptsPage() {
 
   const filtered = receipts.filter(r =>
     r.submitter_name.includes(search) ||
+    (r.payer_name ?? '').includes(search) ||
     r.vendor_name.includes(search) ||
     r.budget_categories?.category_name?.includes(search)
   )
@@ -83,7 +84,7 @@ export default function ReceiptsPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
-            placeholder={isAdmin ? '이름, 사용처, 항목으로 검색' : '사용처, 항목으로 검색'}
+            placeholder={isAdmin ? '이름, 결제자, 사용처, 항목 검색' : '결제자, 사용처, 항목 검색'}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="pl-9"

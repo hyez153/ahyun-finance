@@ -79,6 +79,7 @@ export default function AdminReceiptsPage() {
   const filtered = receipts.filter(r => {
     const matchSearch =
       r.submitter_name.includes(search) ||
+      (r.payer_name ?? '').includes(search) ||
       r.vendor_name.includes(search) ||
       r.budget_categories?.category_name?.includes(search)
     const matchStatus = statusFilter === 'all' || r.status === statusFilter
@@ -124,7 +125,7 @@ export default function AdminReceiptsPage() {
       <div className="flex gap-2 flex-wrap print:hidden">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input placeholder="이름, 사용처, 항목 검색" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder="이름, 결제자, 사용처, 항목 검색" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={periodFilter} onValueChange={v => setPeriodFilter(v ?? 'all')}>
           <SelectTrigger className="w-44">
