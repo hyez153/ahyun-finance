@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-type Step = 'name' | 'login' | 'register'
+type Step = 'name' | 'login' | 'register' | 'forgot'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -134,14 +134,44 @@ export default function LoginPage() {
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />로그인 중...</> : '로그인'}
                 </Button>
-                <button
-                  type="button"
-                  onClick={() => { setStep('name'); setPassword('') }}
-                  className="w-full text-xs text-slate-400 hover:text-slate-600"
-                >
-                  다른 이름으로 로그인
-                </button>
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => { setStep('name'); setPassword('') }}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    다른 이름으로 로그인
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStep('forgot')}
+                    className="text-xs text-slate-400 hover:text-purple-600"
+                  >
+                    비밀번호를 잊으셨나요?
+                  </button>
+                </div>
               </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {step === 'forgot' && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm text-slate-600">비밀번호를 잊으셨나요?</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-slate-500">
+                관리자에게 비밀번호 초기화를 요청해주세요.
+                초기화 후 새 비밀번호로 로그인할 수 있습니다.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setStep('name'); setPassword('') }}
+                className="w-full text-xs text-slate-400 hover:text-slate-600"
+              >
+                ← 로그인으로 돌아가기
+              </button>
             </CardContent>
           </Card>
         )}
