@@ -47,23 +47,32 @@ export default function AdminHome() {
       const transactions = (transactionsRes.data ?? []) as { budget_category_id: number; amount: number }[]
       const pendingReceipts = (pendingReceiptsRes.data ?? []) as { budget_category_id: number; amount: number }[]
 
-      // 소그룹 리더 카테고리 제외 (예산 탭과 동일)
+      // 소그룹 리더 카테고리 분리 (예산 탭과 동일한 합산 로직)
       const mainCategories = categories.filter(c => !c.category_name.startsWith('소그룹_'))
+      const leaderCategories = categories.filter(c => c.category_name.startsWith('소그룹_'))
       const mainCatIds = new Set(mainCategories.map(c => c.id))
+      const leaderCatIds = new Set(leaderCategories.map(c => c.id))
 
       const totalBudget = mainCategories.reduce((s, c) => s + (c.annual_budget ?? 0), 0)
-      const confirmed = transactions
+      const confirmedMain = transactions
         .filter(t => mainCatIds.has(t.budget_category_id))
         .reduce((s, t) => s + Math.abs(t.amount), 0)
-      const pending = pendingReceipts
+      const pendingMain = pendingReceipts
         .filter(r => mainCatIds.has(r.budget_category_id))
+        .reduce((s, r) => s + Number(r.amount), 0)
+      // 소그룹 리더 카테고리 금액을 합산 (양육 그룹에 포함)
+      const confirmedLeader = transactions
+        .filter(t => leaderCatIds.has(t.budget_category_id))
+        .reduce((s, t) => s + Math.abs(t.amount), 0)
+      const pendingLeader = pendingReceipts
+        .filter(r => leaderCatIds.has(r.budget_category_id))
         .reduce((s, r) => s + Number(r.amount), 0)
 
       setStats({
         totalReceipts: receipts.length,
         pendingReceipts: receipts.filter(r => r.status === 'submitted' && !r.is_claimed).length,
         totalBudget,
-        usedBudget: confirmed + pending,
+        usedBudget: confirmedMain + pendingMain + confirmedLeader + pendingLeader,
         activeBatch: batchRes.data?.[0] ?? null,
       })
 
@@ -85,6 +94,8 @@ export default function AdminHome() {
         const g = catIdToGroup.get(r.budget_category_id)
         if (g) groupUsed[g] = (groupUsed[g] || 0) + Number(r.amount)
       })
+      // 소그룹 리더 금액을 양육 그룹에 합산
+      groupUsed['양육'] = (groupUsed['양육'] || 0) + confirmedLeader + pendingLeader
 
       setGroupStats(
         (['목회', '양육', '사역', '행사'] as GroupName[]).map(g => ({
