@@ -110,7 +110,7 @@ export default function LoginPage() {
     setLoading(true)
     const result = await login(name.trim(), password)
     if (result.ok) {
-      toast.success(`${name.trim()}님, 환영합니다!`)
+      toast.success(`${name.trim()}님, 축복하고 환영합니다!`)
       router.push('/')
     } else {
       toast.error(result.error)
@@ -129,7 +129,7 @@ export default function LoginPage() {
     setLoading(true)
     const result = await register(name.trim(), password)
     if (result.ok) {
-      toast.success(`${name.trim()}님, 등록 완료! 환영합니다!`)
+      toast.success(`${name.trim()}님, 등록 완료! 축복하고 환영합니다!`)
       router.push('/')
     } else {
       toast.error(result.error)

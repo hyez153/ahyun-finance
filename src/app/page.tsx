@@ -33,7 +33,7 @@ export default function Home() {
           <p className="text-xs font-medium text-slate-400 tracking-widest uppercase">아현젊은이 교회</p>
           <h1 className="text-3xl font-bold text-slate-800">재정관리 시스템</h1>
           <p className="text-sm text-slate-500 mt-2">
-            {user.name}님 환영합니다
+            {user.name}님 축복하고 환영합니다
             {isAdmin && <span className="ml-1 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">관리자</span>}
           </p>
         </div>
