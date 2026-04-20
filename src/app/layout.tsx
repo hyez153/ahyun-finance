@@ -18,6 +18,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
+      <head>
+        {/* 로그인 화면 말씀용 한국어 세리프 — 단일 페이지에서만 사용 */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className={`${geist.className} bg-gray-50 min-h-screen`}>
         <AuthProvider>
           {children}

@@ -128,3 +128,48 @@
     @apply font-sans;
   }
 }
+
+/* ───── Login entrance animations ───── */
+@keyframes ah-pop-in {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.6); }
+  60%  { opacity: 1; transform: translateY(-3px) scale(1.1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ah-logo-enter {
+  0%   { opacity: 0; transform: scale(0.88); filter: blur(8px); }
+  60%  { opacity: 1; transform: scale(1.03); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+@keyframes ah-glow-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.9;  transform: scale(1.06); }
+}
+@keyframes ah-fade-up {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes ah-sparkle-in {
+  0%   { opacity: 0; transform: scale(0) rotate(-30deg); }
+  60%  { opacity: 1; transform: scale(1.4) rotate(10deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes ah-float-y {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+.ah-pop    { opacity: 0; animation: ah-pop-in   0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both; display: inline-block; }
+.ah-logo   { animation: ah-logo-enter 0.9s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.ah-glow   { animation: ah-glow-pulse 4s ease-in-out 0.9s infinite; }
+.ah-fade   { opacity: 0; animation: ah-fade-up  0.8s ease-out both; }
+.ah-spark  { animation: ah-sparkle-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.ah-float  { animation: ah-float-y    3s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ah-pop, .ah-logo, .ah-glow, .ah-fade, .ah-spark, .ah-float {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
