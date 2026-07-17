@@ -72,8 +72,11 @@ export default function AdminReceiptsPage() {
       })
   }, [])
 
-  // 청구주기: 배치 연결 시 claim_date, 미배정(마이그레이션)은 receipt_date
-  const getClaimDate = (r: Receipt) => (r as any).claim_batches?.claim_date ?? r.receipt_date
+  // 청구일은 배치의 claim_date뿐이다. 배치에 안 붙은 영수증은 아직 청구일이 없다.
+  // receipt_date로 대체하면 안 된다 — 영수증에 적힌 날짜는 청구일이 아니고,
+  // 그게 실제 청구일과 우연히 겹치면 청구완료 건과 미청구 건이 한 기간에 섞여
+  // 합계까지 틀어진다. 미청구 건은 '청구여부: 미청구' 필터로 찾는다.
+  const getClaimDate = (r: Receipt) => (r as any).claim_batches?.claim_date ?? null
   const periodDates = [...new Set(receipts.map(getClaimDate).filter(Boolean) as string[])].sort().reverse()
 
   const filtered = receipts.filter(r => {
