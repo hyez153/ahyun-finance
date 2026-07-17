@@ -12,9 +12,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Upload, Loader2, Camera, ScanLine, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Upload, Loader2, Camera, ScanLine, AlertTriangle, Lock } from 'lucide-react'
 import { toast } from 'sonner'
-import { getCurrentCycleLabel } from '@/lib/claim-cycle'
+import { getCurrentCycleLabel, isUploadBlocked, getUploadBlockedMessage } from '@/lib/claim-cycle'
 import { CONFIDENCE_THRESHOLD } from '@/lib/receipt-parser'
 
 const GROUP_ORDER = ['목회', '양육', '사역', '행사'] as const
@@ -75,6 +75,16 @@ export default function NewReceiptPage() {
   const [ocrMarks, setOcrMarks] = useState<OcrMarks>({})
   // 사용자가 직접 고친 칸. OCR 응답이 늦게 와도 덮어쓰지 않도록 ref로 들고 있는다.
   const touchedRef = useRef<Set<string>>(new Set())
+  const [blocked, setBlocked] = useState(false)
+
+  // 토요일 22:00이 되면 페이지를 열어둔 채로도 잠기게 한다.
+  // 첫 렌더는 항상 false로 두어 서버 렌더 결과와 어긋나지 않게 한다.
+  useEffect(() => {
+    const check = () => setBlocked(isUploadBlocked())
+    check()
+    const timer = setInterval(check, 20_000)
+    return () => clearInterval(timer)
+  }, [])
 
   const [birthdayClimbType, setBirthdayClimbType] = useState<'생일' | '등반' | ''>('')
 
@@ -154,6 +164,11 @@ export default function NewReceiptPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // 페이지를 21:59에 열어두고 22:01에 누르는 경우가 있다. 누르는 순간 다시 본다.
+    if (isUploadBlocked()) {
+      setBlocked(true)
+      return toast.error('토요일 22:00~24:00은 청구 정리 시간입니다. 일요일 0시부터 등록해주세요.')
+    }
     if (!file) return toast.error('영수증 파일을 첨부해주세요.')
     if (!form.budget_category_id) return toast.error('예산 항목을 선택해주세요.')
     if (isBirthdayClimbCategory && !birthdayClimbType) return toast.error('생일/등반 중 사용 구분을 선택해주세요.')
@@ -192,7 +207,19 @@ export default function NewReceiptPage() {
         submitted_at: new Date().toISOString(),
       })
 
-      if (insertError) throw insertError
+      if (insertError) {
+        // 파일은 이미 스토리지에 올라갔다. insert가 실패하면 주인 없는 파일이
+        // 되므로 치운다. (차단 시간대 트리거가 여기서 걸릴 수 있다)
+        await supabase.storage.from('receipts').remove([filePath])
+
+        // 차단 트리거(P0001)는 DB가 준 한국어 안내를 그대로 보여준다.
+        if (insertError.code === 'P0001') {
+          setBlocked(true)
+          toast.error(insertError.message)
+          return
+        }
+        throw insertError
+      }
 
       toast.success('영수증이 제출되었습니다.')
       router.push('/receipts')
@@ -350,9 +377,21 @@ export default function NewReceiptPage() {
       </header>
 
       <div className="max-w-lg mx-auto px-4 py-4">
-        <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm font-medium text-blue-800">{getCurrentCycleLabel()}</p>
-        </div>
+        {blocked ? (
+          <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="flex items-center gap-1.5 text-sm font-medium text-red-800">
+              <Lock className="w-4 h-4 shrink-0" />
+              {getUploadBlockedMessage()}
+            </p>
+            <p className="text-xs text-red-600 mt-1">
+              일요일 0시부터 다시 등록할 수 있어요
+            </p>
+          </div>
+        ) : (
+          <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm font-medium text-blue-800">{getCurrentCycleLabel()}</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Card>
@@ -617,6 +656,14 @@ export default function NewReceiptPage() {
                     삭제
                   </button>
                 </div>
+              ) : blocked ? (
+                // 차단 중에는 사진도 못 고르게 한다. 골라봐야 제출이 막히고,
+                // 고르는 순간 OCR이 돌아 무료 건수만 축난다.
+                <div className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50">
+                  <Lock className="w-6 h-6 text-slate-300 mb-1.5" />
+                  <span className="text-sm font-medium text-slate-400">지금은 등록할 수 없어요</span>
+                  <span className="text-xs text-slate-300 mt-0.5">일요일 0시부터 가능합니다</span>
+                </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   {/* 카메라 촬영 */}
@@ -655,8 +702,8 @@ export default function NewReceiptPage() {
             </CardContent>
           </Card>
 
-          <Button type="submit" className="w-full" disabled={loading || isOverBudget || isBirthdayOverMax}>
-            {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />제출 중...</> : isBirthdayOverMax ? '생일 상한 초과 — 제출 불가' : isOverBudget ? '잔액 초과 — 제출 불가' : '영수증 제출'}
+          <Button type="submit" className="w-full" disabled={loading || blocked || isOverBudget || isBirthdayOverMax}>
+            {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />제출 중...</> : blocked ? '청구 정리 시간 — 등록 불가' : isBirthdayOverMax ? '생일 상한 초과 — 제출 불가' : isOverBudget ? '잔액 초과 — 제출 불가' : '영수증 제출'}
           </Button>
         </form>
       </div>

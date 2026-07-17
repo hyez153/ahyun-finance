@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:parser": "tsx src/lib/receipt-parser.test.ts"
+    "test": "tsx src/lib/receipt-parser.test.ts && tsx src/lib/claim-cycle.test.ts",
+    "test:parser": "tsx src/lib/receipt-parser.test.ts",
+    "test:cycle": "tsx src/lib/claim-cycle.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

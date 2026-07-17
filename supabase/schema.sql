@@ -163,3 +163,37 @@ grant select on public.budget_categories to anon, authenticated;
 grant select on public.claim_batches to anon, authenticated;
 grant select, insert, update on public.receipts to anon, authenticated;
 grant select, insert on public.budget_transactions to anon, authenticated;
+
+-- ============================================================
+-- 9. 업로드 차단 시간대 (토 22:00~24:00 = 청구 정리 시간)
+--
+--   영수증 insert는 브라우저 → Supabase 직행이라 서버 라우트를 안 거친다.
+--   화면에서 버튼을 잠가도 폰 시계가 틀리면 통과하므로, 서버 시계(KST)로
+--   여기서 막는다. 화면 차단은 안내용이고 이게 진짜 차단이다.
+-- ============================================================
+create or replace function public.reject_upload_during_blackout()
+returns trigger
+language plpgsql
+as $$
+declare
+  kst timestamp;
+begin
+  kst := now() at time zone 'Asia/Seoul';
+
+  -- extract(dow): 0=일, 6=토
+  if extract(dow from kst) = 6 and kst::time >= time '22:00' then
+    raise exception using
+      errcode = 'P0001',
+      message = '토요일 22:00~24:00은 청구 정리 시간이라 영수증을 등록할 수 없습니다. 일요일 0시부터 다시 등록해주세요.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists receipts_upload_blackout on public.receipts;
+
+create trigger receipts_upload_blackout
+  before insert on public.receipts
+  for each row
+  execute function public.reject_upload_during_blackout();
