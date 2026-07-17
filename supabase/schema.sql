@@ -197,3 +197,61 @@ create trigger receipts_upload_blackout
   before insert on public.receipts
   for each row
   execute function public.reject_upload_during_blackout();
+
+-- ============================================================
+-- 10. 영수증 수정 규칙
+--
+--   청구된 영수증의 내용은 영구히 잠근다. 토 22:00~24:00에도 못 고친다.
+--   단 "내용" 칸만 본다 — 회계가 배치에 쓰는 claim_batch_id / is_claimed /
+--   status만 바뀌는 update는 통과시킨다. 안 그러면 하필 회계가 일하는
+--   그 시간에 배치를 못 만든다.
+--
+--   삭제는 막지 않는다. 관리자는 정리 시간에도 잘못된 영수증을 빼야 하는데,
+--   DB는 익명 키만 보므로 관리자와 유저를 구분할 수 없다. 삭제 차단은 화면에서.
+-- ============================================================
+create or replace function public.reject_receipt_content_edit()
+returns trigger
+language plpgsql
+as $$
+declare
+  kst timestamp;
+  content_changed boolean;
+begin
+  content_changed :=
+       new.submitter_name     is distinct from old.submitter_name
+    or new.payer_name         is distinct from old.payer_name
+    or new.budget_category_id is distinct from old.budget_category_id
+    or new.amount             is distinct from old.amount
+    or new.receipt_date       is distinct from old.receipt_date
+    or new.vendor_name        is distinct from old.vendor_name
+    or new.memo               is distinct from old.memo
+    or new.file_url           is distinct from old.file_url
+    or new.file_path          is distinct from old.file_path;
+
+  if not content_changed then
+    return new;
+  end if;
+
+  if old.is_claimed or old.claim_batch_id is not null then
+    raise exception using
+      errcode = 'P0001',
+      message = '이미 청구된 영수증은 수정할 수 없습니다.';
+  end if;
+
+  kst := now() at time zone 'Asia/Seoul';
+  if extract(dow from kst) = 6 and kst::time >= time '22:00' then
+    raise exception using
+      errcode = 'P0001',
+      message = '토요일 22:00~24:00은 청구 정리 시간이라 영수증을 수정할 수 없습니다. 일요일 0시부터 수정해주세요.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists receipts_content_edit_guard on public.receipts;
+
+create trigger receipts_content_edit_guard
+  before update on public.receipts
+  for each row
+  execute function public.reject_receipt_content_edit();

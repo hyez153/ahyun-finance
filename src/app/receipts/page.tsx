@@ -11,7 +11,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Plus, Search, Loader2 } from 'lucide-react'
+import { ArrowLeft, Plus, Search, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { isUploadBlocked } from '@/lib/claim-cycle'
+import { isEditable, canModify } from '@/lib/receipt-rules'
 
 const STATUS_LABEL: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   draft: { label: '임시저장', variant: 'secondary' },
@@ -25,6 +28,7 @@ export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -50,6 +54,33 @@ export default function ReceiptsPage() {
       setLoading(false)
     })
   }, [user, isAdmin])
+
+  async function handleDelete(r: Receipt) {
+    // 청구된 건은 확정 회계 기록이라 아무도 못 지운다.
+    if (r.is_claimed || r.claim_batch_id !== null) {
+      return toast.error('이미 청구된 영수증은 삭제할 수 없습니다.')
+    }
+    // 정리 시간(토 22~24시): 유저는 못 지우고, 관리자는 잘못된 건을 빼야 하므로 가능.
+    if (isUploadBlocked() && !isAdmin) {
+      return toast.error('토요일 22:00~24:00은 청구 정리 시간입니다. 일요일 0시부터 삭제해주세요.')
+    }
+    if (!window.confirm(`${r.vendor_name} 영수증을 삭제하시겠습니까?`)) return
+
+    setDeletingId(r.id)
+    // 파일도 같이 지운다. 실물영수증제출 같은 특수값은 지울 파일이 없다.
+    if (r.file_path && r.file_url !== '실물영수증제출') {
+      await supabase.storage.from('receipts').remove([r.file_path])
+    }
+    const { error } = await supabase.from('receipts').delete().eq('id', r.id)
+    setDeletingId(null)
+
+    if (error) {
+      toast.error('삭제 중 오류가 발생했습니다.')
+      return
+    }
+    setReceipts(prev => prev.filter(x => x.id !== r.id))
+    toast.success('영수증이 삭제되었습니다.')
+  }
 
   if (authLoading || !user) {
     return (
@@ -152,6 +183,25 @@ export default function ReceiptsPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* 미청구 + 권한 있는 사람에게만 수정/삭제 버튼 */}
+                  {isEditable(r) && canModify(r, user.name, isAdmin) && (
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+                      <Link href={`/receipts/${r.id}/edit`} className="flex-1">
+                        <Button variant="outline" size="sm" className="w-full">
+                          <Pencil className="w-3.5 h-3.5 mr-1" />수정
+                        </Button>
+                      </Link>
+                      <Button variant="outline" size="sm"
+                        className="flex-1 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        disabled={deletingId === r.id}
+                        onClick={() => handleDelete(r)}>
+                        {deletingId === r.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <><Trash2 className="w-3.5 h-3.5 mr-1" />삭제</>}
+                      </Button>
+                    </div>
+                  )}
                 </CardHeader>
               </Card>
             ))}
