@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -12,9 +12,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Upload, Loader2, Camera } from 'lucide-react'
+import { ArrowLeft, Upload, Loader2, Camera, ScanLine, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCurrentCycleLabel } from '@/lib/claim-cycle'
+import { CONFIDENCE_THRESHOLD } from '@/lib/receipt-parser'
 
 const GROUP_ORDER = ['목회', '양육', '사역', '행사'] as const
 
@@ -23,6 +24,42 @@ interface BudgetInfo {
   confirmed: number
   pending: number
   remaining: number
+}
+
+/** OCR이 자동으로 채운 칸 — 확신도가 낮으면 "확인해주세요"를 띄운다. */
+type OcrMark = 'confident' | 'uncertain'
+type OcrMarks = Partial<Record<'amount' | 'receipt_date' | 'vendor_name', OcrMark>>
+
+function markOf(confidence: number | null): OcrMark | undefined {
+  if (confidence === null) return undefined
+  return confidence >= CONFIDENCE_THRESHOLD ? 'confident' : 'uncertain'
+}
+
+/** OCR이 채운 칸 아래에 붙는 안내. 손대면 사라진다. */
+function OcrHint({ mark }: { mark?: OcrMark }) {
+  if (mark === 'uncertain') {
+    return (
+      <p className="flex items-center gap-1 text-xs font-medium text-amber-600">
+        <AlertTriangle className="w-3 h-3 shrink-0" />
+        잘못 읽었을 수 있어요 — 확인해주세요
+      </p>
+    )
+  }
+  if (mark === 'confident') {
+    return (
+      <p className="flex items-center gap-1 text-xs text-slate-400">
+        <ScanLine className="w-3 h-3 shrink-0" />
+        영수증에서 자동 입력 — 확인해주세요
+      </p>
+    )
+  }
+  return null
+}
+
+function ocrBorder(mark?: OcrMark): string {
+  if (mark === 'uncertain') return 'border-amber-400 bg-amber-50/40 focus-visible:ring-amber-400'
+  if (mark === 'confident') return 'border-blue-200 bg-blue-50/30'
+  return ''
 }
 
 export default function NewReceiptPage() {
@@ -34,6 +71,10 @@ export default function NewReceiptPage() {
   const [budgetInfo, setBudgetInfo] = useState<BudgetInfo | null>(null)
   const [budgetLoading, setBudgetLoading] = useState(false)
   const [showLeaderSelect, setShowLeaderSelect] = useState(false)
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const [ocrMarks, setOcrMarks] = useState<OcrMarks>({})
+  // 사용자가 직접 고친 칸. OCR 응답이 늦게 와도 덮어쓰지 않도록 ref로 들고 있는다.
+  const touchedRef = useRef<Set<string>>(new Set())
 
   const [birthdayClimbType, setBirthdayClimbType] = useState<'생일' | '등반' | ''>('')
 
@@ -209,6 +250,88 @@ export default function NewReceiptPage() {
       const saved = Math.round((1 - compressed.size / selectedFile.size) * 100)
       toast.success(`이미지 압축 완료 (${saved}% 절약)`)
     }
+
+    // OCR에는 저장본(1280px/품질 0.6)이 아니라 고화질본을 보낸다.
+    // 저장본은 글자가 뭉개져 인식률이 떨어진다.
+    const forOcr = await compressImage(selectedFile, 2048, 0.9)
+    runOcr(forOcr)
+  }
+
+  async function runOcr(target: File) {
+    setOcrLoading(true)
+    try {
+      const body = new FormData()
+      body.append('file', target)
+      const res = await fetch('/api/ocr', { method: 'POST', body })
+
+      if (!res.ok) {
+        // OCR이 실패해도 등록은 계속 되어야 한다. 손으로 채우면 그만이다.
+        // 503은 OCR 미설정 — 사용자에게 알릴 필요 없다.
+        if (res.status !== 503) {
+          toast.info('영수증을 자동으로 읽지 못했어요. 직접 입력해주세요.')
+        }
+        return
+      }
+
+      applyOcr(await res.json())
+    } catch {
+      toast.info('영수증을 자동으로 읽지 못했어요. 직접 입력해주세요.')
+    } finally {
+      setOcrLoading(false)
+    }
+  }
+
+  /** OCR 결과를 폼에 채운다. 사용자가 이미 손댄 칸은 건드리지 않는다. */
+  function applyOcr(data: {
+    amount: number | null
+    receiptDate: string | null
+    vendorName: string | null
+    confidence: { amount: number | null; receiptDate: number | null; vendorName: number | null }
+  }) {
+    const marks: OcrMarks = {}
+    const touched = touchedRef.current
+
+    setForm(f => {
+      const next = { ...f }
+      if (data.amount !== null && !touched.has('amount')) {
+        next.amount = data.amount.toLocaleString('ko-KR')
+        marks.amount = markOf(data.confidence.amount)
+      }
+      if (data.receiptDate !== null && !touched.has('receipt_date')) {
+        next.receipt_date = data.receiptDate
+        marks.receipt_date = markOf(data.confidence.receiptDate)
+      }
+      if (data.vendorName !== null && !touched.has('vendor_name')) {
+        next.vendor_name = data.vendorName
+        marks.vendor_name = markOf(data.confidence.vendorName)
+      }
+      return next
+    })
+
+    setOcrMarks(marks)
+
+    const filled = Object.keys(marks).length
+    if (filled === 0) {
+      toast.info('영수증에서 읽을 값을 찾지 못했어요. 직접 입력해주세요.')
+      return
+    }
+    const uncertain = Object.values(marks).filter(m => m === 'uncertain').length
+    if (uncertain > 0) {
+      toast.warning(`${filled}개 칸을 채웠어요. 표시된 칸은 꼭 확인해주세요.`)
+    } else {
+      toast.success(`${filled}개 칸을 자동으로 채웠어요. 맞는지 확인해주세요.`)
+    }
+  }
+
+  /** 사용자가 직접 고친 칸은 OCR이 덮어쓰지 않고, "확인해주세요" 표시도 지운다. */
+  function markTouched(field: 'amount' | 'receipt_date' | 'vendor_name') {
+    touchedRef.current.add(field)
+    setOcrMarks(m => {
+      if (!(field in m)) return m
+      const next = { ...m }
+      delete next[field]
+      return next
+    })
   }
 
   function handleAmountChange(v: string) {
@@ -376,11 +499,20 @@ export default function NewReceiptPage() {
                     id="amount"
                     placeholder="0"
                     value={form.amount}
-                    onChange={e => handleAmountChange(e.target.value)}
+                    onChange={e => {
+                      markTouched('amount')
+                      handleAmountChange(e.target.value)
+                    }}
                     inputMode="numeric"
                     required
-                    className={(isOverBudget || isBirthdayOverMax) ? 'border-red-400 focus-visible:ring-red-400' : ''}
+                    className={
+                      // 잔액 초과 경고가 OCR 표시보다 중요하다 — 빨강이 이긴다.
+                      (isOverBudget || isBirthdayOverMax)
+                        ? 'border-red-400 focus-visible:ring-red-400'
+                        : ocrBorder(ocrMarks.amount)
+                    }
                   />
+                  {!isOverBudget && !isBirthdayOverMax && <OcrHint mark={ocrMarks.amount} />}
                   {budgetLoading && (
                     <p className="text-xs text-slate-400">잔액 조회 중...</p>
                   )}
@@ -409,9 +541,14 @@ export default function NewReceiptPage() {
                     id="receipt_date"
                     type="date"
                     value={form.receipt_date}
-                    onChange={e => setForm(f => ({ ...f, receipt_date: e.target.value }))}
+                    onChange={e => {
+                      markTouched('receipt_date')
+                      setForm(f => ({ ...f, receipt_date: e.target.value }))
+                    }}
                     required
+                    className={ocrBorder(ocrMarks.receipt_date)}
                   />
+                  <OcrHint mark={ocrMarks.receipt_date} />
                 </div>
               </div>
 
@@ -421,9 +558,14 @@ export default function NewReceiptPage() {
                   id="vendor_name"
                   placeholder="예) 스타벅스 홍대점"
                   value={form.vendor_name}
-                  onChange={e => setForm(f => ({ ...f, vendor_name: e.target.value }))}
+                  onChange={e => {
+                    markTouched('vendor_name')
+                    setForm(f => ({ ...f, vendor_name: e.target.value }))
+                  }}
                   required
+                  className={ocrBorder(ocrMarks.vendor_name)}
                 />
+                <OcrHint mark={ocrMarks.vendor_name} />
               </div>
 
               <div className="space-y-1.5">
@@ -455,11 +597,21 @@ export default function NewReceiptPage() {
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-700 truncate">{file.name}</p>
-                    <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB</p>
+                    {ocrLoading ? (
+                      <p className="flex items-center gap-1 text-xs font-medium text-blue-500">
+                        <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
+                        영수증 읽는 중...
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB</p>
+                    )}
                   </div>
                   <button
                     type="button"
-                    onClick={() => setFile(null)}
+                    onClick={() => {
+                      setFile(null)
+                      setOcrMarks({})
+                    }}
                     className="text-xs text-red-400 hover:text-red-600 shrink-0"
                   >
                     삭제
