@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Receipt, ClaimBatch } from '@/types/database'
 import { formatKRW, formatDate } from '@/lib/utils'
+import { getWeekLabel } from '@/lib/claim-cycle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, Printer, Loader2 } from 'lucide-react'
@@ -79,7 +80,7 @@ function ClaimPrintContent() {
             <Link href="/admin/claims">
               <ArrowLeft className="w-5 h-5 text-slate-500 cursor-pointer hover:text-slate-700" />
             </Link>
-            <h1 className="font-semibold text-slate-800">{batch.year}년 {batch.month}월 {batch.half === 1 ? '첫째주' : '셋째주'} 청구 내역 인쇄</h1>
+            <h1 className="font-semibold text-slate-800">{batch.year}년 {batch.month}월 {getWeekLabel(batch.week_no)} 청구 내역 인쇄</h1>
           </div>
           <Button onClick={() => window.print()} size="sm" className="gap-2">
             <Printer className="w-4 h-4" />
@@ -92,7 +93,7 @@ function ClaimPrintContent() {
         <div className="bg-white print:bg-transparent">
           {/* Print header */}
           <div className="text-center mb-6 pb-6 border-b-2">
-            <h1 className="text-2xl font-bold text-slate-900">{batch.year}년 {batch.month}월 {batch.half === 1 ? '첫째주' : '셋째주'} 청구 명세</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{batch.year}년 {batch.month}월 {getWeekLabel(batch.week_no)} 청구 명세</h1>
             <p className="text-sm text-slate-500 mt-2">청구 기간: {formatDate(batch.submission_deadline)} ~ {formatDate(batch.claim_date)}</p>
             <p className="text-lg font-bold text-slate-800 mt-4">
               합계: {formatKRW(receipts.reduce((sum, r) => sum + r.amount, 0))}

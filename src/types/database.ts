@@ -16,7 +16,7 @@ export interface ClaimBatch {
   id: number
   year: number
   month: number
-  half: 1 | 2              // 1=첫째주, 2=셋째주
+  week_no: number          // 해당 월의 N번째 토요일 (1~5)
   submission_deadline: string
   claim_date: string
   status: ClaimBatchStatus

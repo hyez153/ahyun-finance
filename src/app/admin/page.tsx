@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { formatKRW } from '@/lib/utils'
+import { getWeekLabel } from '@/lib/claim-cycle'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Receipt, CreditCard, BarChart3, AlertTriangle } from 'lucide-react'
@@ -28,7 +29,7 @@ export default function AdminHome() {
     pendingReceipts: 0,
     totalBudget: 0,
     usedBudget: 0,
-    activeBatch: null as { year: number; month: number; half: number; status: string } | null,
+    activeBatch: null as { year: number; month: number; week_no: number; status: string } | null,
   })
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
 
@@ -39,7 +40,7 @@ export default function AdminHome() {
         supabase.from('budget_categories').select('id, category_name, group_name, annual_budget'),
         supabase.from('budget_transactions').select('budget_category_id, amount'),
         supabase.from('receipts').select('budget_category_id, amount').eq('status', 'submitted').eq('is_claimed', false),
-        supabase.from('claim_batches').select('year, month, half, status').order('year', { ascending: false }).order('month', { ascending: false }).order('half', { ascending: false }).limit(1),
+        supabase.from('claim_batches').select('year, month, week_no, status').order('year', { ascending: false }).order('month', { ascending: false }).order('week_no', { ascending: false }).limit(1),
       ])
 
       const receipts = receiptsRes.data ?? []
@@ -174,7 +175,7 @@ export default function AdminHome() {
           <CardContent className="px-4 pb-4">
             {stats.activeBatch ? (
               <>
-                <p className="text-2xl font-bold text-slate-800">{stats.activeBatch.month}월 {stats.activeBatch.half === 1 ? '첫째주' : '셋째주'}</p>
+                <p className="text-2xl font-bold text-slate-800">{stats.activeBatch.month}월 {getWeekLabel(stats.activeBatch.week_no)}</p>
                 <Badge variant={stats.activeBatch.status === 'confirmed' ? 'outline' : 'default'} className="text-xs mt-0.5">
                   {stats.activeBatch.status === 'confirmed' ? '확정됨' : '진행 중'}
                 </Badge>

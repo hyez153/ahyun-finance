@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
+import { getCycleDescription } from '@/lib/claim-cycle'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Receipt, List, LayoutDashboard, LogOut, Loader2 } from 'lucide-react'
@@ -89,7 +90,7 @@ export default function Home() {
 
         <div className="flex items-center justify-between">
           <p className="text-xs text-slate-400">
-            매월 첫째주·셋째주 토요일 23:59 마감 · 다음날 일요일 청구
+            {getCycleDescription()}
           </p>
           <button
             onClick={() => { logout(); router.replace('/login') }}

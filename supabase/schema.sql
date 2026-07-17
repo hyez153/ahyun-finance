@@ -35,13 +35,13 @@ create table if not exists public.claim_batches (
   id                  bigint generated always as identity primary key,
   year                int not null,
   month               int not null check (month between 1 and 12),
-  half                int not null default 1 check (half in (1, 2)),  -- 1=첫째주, 2=셋째주
+  week_no             int not null default 1 check (week_no between 1 and 5),  -- 해당 월의 N번째 토요일
   submission_deadline timestamptz not null,
   claim_date          date not null,
   status              text not null default 'draft' check (status in ('draft', 'confirmed')),
   total_amount        numeric(14, 2) not null default 0,
   created_at          timestamptz not null default now(),
-  unique (year, month, half)
+  unique (year, month, week_no)
 );
 
 -- ============================================================
