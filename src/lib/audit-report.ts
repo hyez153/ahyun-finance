@@ -15,6 +15,7 @@ export const GROUP_ORDER: GroupName[] = ['목회', '양육', '사역', '행사']
 /** 집계에 넘길 영수증 한 건 (조인된 항목 정보 포함) */
 export interface AuditReceipt {
   id: number
+  budget_category_id: number
   amount: number
   receipt_date: string
   vendor_name: string
@@ -24,6 +25,34 @@ export interface AuditReceipt {
   claim_date: string // 소속 배치의 청구일 (YYYY-MM-DD)
   group_name: string
   category_name: string
+}
+
+export interface CategoryReceiptResult {
+  rows: AuditReceipt[]
+  total: number
+  count: number
+}
+
+/**
+ * 특정 예산 항목의 영수증만, 청구일 구간으로 걸러 반환한다.
+ * 예: "소그룹_정연우" 항목의 3~5월 청구완료 영수증.
+ *
+ * category_id로 거르므로 소그룹 리더처럼 이름이 겹칠 일 없는 항목도 정확하다.
+ */
+export function filterCategoryReceipts(
+  receipts: AuditReceipt[],
+  categoryId: number,
+  start: string,
+  end: string
+): CategoryReceiptResult {
+  const rows = receipts
+    .filter(r => r.budget_category_id === categoryId && isInRange(r.claim_date, start, end))
+    .sort((a, b) => {
+      if (a.claim_date !== b.claim_date) return a.claim_date.localeCompare(b.claim_date)
+      return a.receipt_date.localeCompare(b.receipt_date)
+    })
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  return { rows, total, count: rows.length }
 }
 
 export interface CategorySummary {

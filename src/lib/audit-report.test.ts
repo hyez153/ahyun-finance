@@ -1,4 +1,4 @@
-import { buildAuditReport, isInRange, distinctClaimDates, chunk, AuditReceipt } from './audit-report'
+import { buildAuditReport, isInRange, distinctClaimDates, chunk, filterCategoryReceipts, AuditReceipt } from './audit-report'
 
 let pass = 0
 let fail = 0
@@ -12,7 +12,7 @@ let seq = 0
 function r(claim_date: string, group_name: string, category_name: string, amount: number, extra: Partial<AuditReceipt> = {}): AuditReceipt {
   seq += 1
   return {
-    id: seq, amount, receipt_date: claim_date, vendor_name: `가게${seq}`,
+    id: seq, budget_category_id: 0, amount, receipt_date: claim_date, vendor_name: `가게${seq}`,
     memo: null, submitter_name: '홍길동', payer_name: null,
     claim_date, group_name, category_name, ...extra,
   }
@@ -123,6 +123,27 @@ console.log('\n[8] 명세 페이지 분할')
   check('딱 나눠떨어지면 나머지 장 없음', chunk(Array(56).fill(0), 28).length, 2)
   check('빈 배열 → 빈 페이지 목록', chunk([], 28).length, 0)
   check('1건 → 1장', chunk([1], 28).length, 1)
+}
+
+// ── 9. 항목별 영수증 조회 (filterCategoryReceipts) ─────────
+// 예: "소그룹_정연우"(id=10)의 3~5월 청구완료 영수증만.
+console.log('\n[9] 항목별 영수증 조회')
+{
+  const receipts = [
+    r('2026-03-01', '양육', '소그룹_정연우', 5000, { budget_category_id: 10 }),
+    r('2026-03-15', '양육', '소그룹_정연우', 3000, { budget_category_id: 10 }),
+    r('2026-03-01', '양육', '소그룹_김철수', 9999, { budget_category_id: 11 }), // 다른 항목
+    r('2026-06-01', '양육', '소그룹_정연우', 7777, { budget_category_id: 10 }), // 구간 밖
+  ]
+  const res = filterCategoryReceipts(receipts, 10, '2026-03-01', '2026-05-31')
+  check('정연우 항목만 = 2건', res.count, 2)
+  check('합계 = 8000 (다른 항목·구간 밖 제외)', res.total, 8000)
+  check('청구일 오름차순', res.rows.map(x => x.claim_date), ['2026-03-01', '2026-03-15'])
+  check('다른 항목 안 섞임', res.rows.every(x => x.budget_category_id === 10), true)
+
+  const empty = filterCategoryReceipts(receipts, 999, '2026-01-01', '2026-12-31')
+  check('없는 항목 → 0건', empty.count, 0)
+  check('없는 항목 → 합계 0', empty.total, 0)
 }
 
 console.log(`\n${'─'.repeat(50)}`)

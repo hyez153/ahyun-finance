@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { Receipt, CreditCard, BarChart3, Home, Loader2, LogOut, Users, FileSearch } from 'lucide-react'
+import { Receipt, CreditCard, BarChart3, Home, Loader2, LogOut, Users, FileSearch, FolderSearch } from 'lucide-react'
 
 const NAV = [
   { href: '/admin', label: '홈', icon: Home },
@@ -12,6 +12,7 @@ const NAV = [
   { href: '/admin/claims', label: '청구', icon: CreditCard },
   { href: '/admin/budget', label: '예산', icon: BarChart3 },
   { href: '/admin/audit', label: '감사자료', icon: FileSearch },
+  { href: '/admin/category-receipts', label: '항목별', icon: FolderSearch },
   { href: '/admin/users', label: '사용자', icon: Users },
 ]
 
