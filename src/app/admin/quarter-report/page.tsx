@@ -117,7 +117,7 @@ export default function QuarterReportPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-slate-800">분기 예산 집행 보고</h1>
-          <p className="text-sm text-slate-500">청구완료 기준 · 소그룹은 운영비로 합산 · C = 예산 × 경과분기/4</p>
+          <p className="text-sm text-slate-500">청구완료 기준 · 소그룹은 운영비로 합산 · 분기 목표 = 1년 예산 ÷ 4</p>
         </div>
         <Button onClick={downloadPDF} size="sm" className="gap-2 shrink-0" disabled={pdfLoading}>
           {pdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
@@ -168,11 +168,11 @@ export default function QuarterReportPage() {
           <thead>
             <tr className="bg-gray-100">
               <th className="border border-black px-2 py-1 text-left">항목</th>
-              <th className="border border-black px-2 py-1 text-right">사용금액 (A)</th>
-              <th className="border border-black px-2 py-1 text-right">예산 (B)</th>
-              <th className="border border-black px-2 py-1 text-right">예산÷4분기 (C)</th>
-              <th className="border border-black px-2 py-1 text-right">A/B</th>
-              <th className="border border-black px-2 py-1 text-right">A/C</th>
+              <th className="border border-black px-2 py-1 text-right">사용금액</th>
+              <th className="border border-black px-2 py-1 text-right">1년 예산</th>
+              <th className="border border-black px-2 py-1 text-right">분기 목표<br/>(예산÷4)</th>
+              <th className="border border-black px-2 py-1 text-right">1년예산 내<br/>사용비율</th>
+              <th className="border border-black px-2 py-1 text-right">분기내<br/>사용비율</th>
             </tr>
           </thead>
           <tbody>
@@ -196,7 +196,7 @@ export default function QuarterReportPage() {
             </tr>
           </tbody>
         </table>
-        <p className="text-[10px] text-slate-400">* C(예산÷4분기)는 단순 분기 목표. 상반기 누적은 예산÷2로 계산됩니다.</p>
+        <p className="text-[10px] text-slate-400">* 분기 목표 = 1년 예산의 1/4(단순 4등분). 상반기 누적은 1년 예산의 1/2로 계산됩니다.<br/>* 1년예산 내 사용비율 = 사용금액÷1년예산 · 분기내 사용비율 = 사용금액÷분기 목표</p>
 
         {/* 전체 총평 메모 */}
         {memoOf('전체') && (
@@ -223,18 +223,18 @@ export default function QuarterReportPage() {
         <Fragment key={g.group_name}>
           <div data-pdf-page className="bg-white border-2 border-black p-6 space-y-3">
             <div className="flex items-baseline justify-between">
-              <h3 className="text-base font-black">{g.group_name} <span className="text-sm font-normal text-slate-500">(A/B {pct(g.useRate)} · A/C {pct(g.quarterRate)})</span></h3>
+              <h3 className="text-base font-black">{g.group_name} <span className="text-sm font-normal text-slate-500">· 분기내 사용비율 {pct(g.quarterRate)} · 1년예산 내 사용비율 {pct(g.useRate)}</span></h3>
               <span className="text-sm font-bold">{formatKRW(g.used)} / {formatKRW(g.budget)}</span>
             </div>
             <table className="border-collapse border border-black w-full text-xs">
               <thead>
                 <tr className="bg-gray-100">
                   <th className="border border-black px-2 py-1 text-left">항목</th>
-                  <th className="border border-black px-2 py-1 text-right">사용금액 (A)</th>
-                  <th className="border border-black px-2 py-1 text-right">예산 (B)</th>
-                  <th className="border border-black px-2 py-1 text-right">예산÷4 (C)</th>
-                  <th className="border border-black px-2 py-1 text-right">A/B</th>
-                  <th className="border border-black px-2 py-1 text-right">A/C</th>
+                  <th className="border border-black px-2 py-1 text-right">사용금액</th>
+                  <th className="border border-black px-2 py-1 text-right">1년 예산</th>
+                  <th className="border border-black px-2 py-1 text-right">분기 목표<br/>(예산÷4)</th>
+                  <th className="border border-black px-2 py-1 text-right">1년예산 내<br/>사용비율</th>
+                  <th className="border border-black px-2 py-1 text-right">분기내<br/>사용비율</th>
                 </tr>
               </thead>
               <tbody>
