@@ -151,12 +151,12 @@ export default function QuarterReportPage() {
         <table className="border-collapse border border-black w-full text-sm">
           <tbody>
             <tr>
-              <td className="border border-black px-3 py-1.5 font-bold bg-gray-50 w-32">총예산</td>
-              <td className="border border-black px-3 py-1.5 text-right font-semibold">{formatKRW(report.totalBudget)}</td>
+              <td className="border border-black px-3 py-1.5 font-bold bg-gray-50 whitespace-nowrap w-40">총예산</td>
+              <td className="border border-black px-3 py-1.5 text-right font-semibold whitespace-nowrap">{formatKRW(report.totalBudget)}</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1.5 font-bold bg-gray-50">ㄴ {current.label} 집행 합계</td>
-              <td className="border border-black px-3 py-1.5 text-right font-bold">
+              <td className="border border-black px-3 py-1.5 font-bold bg-gray-50 whitespace-nowrap">└ {current.label} 집행 합계</td>
+              <td className="border border-black px-3 py-1.5 text-right font-bold whitespace-nowrap">
                 {formatKRW(report.totalUsed)} <span className="text-slate-500 font-normal">(집행률 {pct(report.useRate)})</span>
               </td>
             </tr>
