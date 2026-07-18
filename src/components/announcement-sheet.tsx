@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
  * 새 공지를 낼 때는 ANNOUNCEMENT_VERSION을 올리고 아래 내용을 바꾸면,
  * 예전 공지를 본 사람에게도 새로 다시 뜬다.
  */
-const ANNOUNCEMENT_VERSION = 'v1-2026-07-weekly-ocr'
+const ANNOUNCEMENT_VERSION = 'v2-2026-07-weekly-ocr-edit'
 const STORAGE_KEY = 'ahyun_announcement_seen'
 
 export function AnnouncementSheet() {
@@ -66,7 +66,7 @@ export function AnnouncementSheet() {
 
         {/* 본문 (길면 스크롤) */}
         <div className="px-5 pb-2 overflow-y-auto space-y-4">
-          {/* 핵심 두 줄 */}
+          {/* 핵심 세 줄 */}
           <div className="space-y-2">
             <div className="flex items-start gap-2.5 p-3 bg-purple-50 rounded-lg">
               <span className="shrink-0 w-6 h-6 rounded-full bg-purple-600 text-white text-xs font-bold flex items-center justify-center">1</span>
@@ -75,6 +75,10 @@ export function AnnouncementSheet() {
             <div className="flex items-start gap-2.5 p-3 bg-blue-50 rounded-lg">
               <span className="shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">2</span>
               <p className="text-sm font-semibold text-slate-800 pt-0.5">영수증 <span className="text-blue-700">사진 자동인식</span> 기능이 생겼어요</p>
+            </div>
+            <div className="flex items-start gap-2.5 p-3 bg-emerald-50 rounded-lg">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center">3</span>
+              <p className="text-sm font-semibold text-slate-800 pt-0.5">내가 올린 영수증을 <span className="text-emerald-700">수정</span>할 수 있어요</p>
             </div>
           </div>
 
@@ -97,6 +101,11 @@ export function AnnouncementSheet() {
 
             <div>
               <p>다만 <b>자동으로 채운 칸은 꼭 한 번 확인</b>해 주세요. 잘 읽은 칸은 <span className="text-blue-600 font-medium">파란 테두리</span>로 '확인해주세요', 잘못 읽었을 수 있는 칸은 <span className="text-amber-600 font-medium">노란 테두리</span>로 눈에 띄게 표시돼요. 직접 고치면 그 표시는 사라지고요. 혹시 사진을 잘 못 읽어도 손으로 채우면 되니까 등록엔 지장 없어요.</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-slate-700 mb-1">✏️ 내가 올린 영수증 수정</p>
+              <p><b>제출내역 조회</b> 탭에서 내가 낸 영수증을 수정할 수 있어요. 잘못 쓴 금액·날짜·적요 등을 바로잡을 수 있고요. 수정은 <b>매주 토요일 밤 10시 전까지</b>만 가능해요. (청구가 끝난 영수증은 확정 기록이라 수정되지 않아요)</p>
             </div>
           </div>
         </div>
