@@ -122,3 +122,16 @@ export function buildAuditReport(
 export function distinctClaimDates(receipts: Pick<AuditReceipt, 'claim_date'>[]): string[] {
   return [...new Set(receipts.map(r => r.claim_date))].sort()
 }
+
+/**
+ * 배열을 size개씩 끊는다. 명세를 PDF 여러 장으로 나눌 때 쓴다.
+ * 한 장에 다 넣으면 A4 한 장 높이로 압축돼서 글자가 깨알이 된다.
+ */
+export function chunk<T>(items: T[], size: number): T[][] {
+  if (size < 1) return [items]
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size))
+  }
+  return out
+}

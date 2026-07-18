@@ -1,4 +1,4 @@
-import { buildAuditReport, isInRange, distinctClaimDates, AuditReceipt } from './audit-report'
+import { buildAuditReport, isInRange, distinctClaimDates, chunk, AuditReceipt } from './audit-report'
 
 let pass = 0
 let fail = 0
@@ -108,6 +108,21 @@ console.log('\n[7] 시작=끝이면 그 청구일 하루만')
   const rep = buildAuditReport(receipts, '2026-03-01', '2026-03-01')
   check('3/1 하루만 = 1000', rep.grandTotal, 1000)
   check('1건', rep.grandCount, 1)
+}
+
+// ── 8. 명세 페이지 분할 (chunk) ────────────────────────────
+// 한 장에 다 넣으면 A4 한 장 높이로 압축돼 글자가 안 보인다.
+console.log('\n[8] 명세 페이지 분할')
+{
+  const nums = Array.from({ length: 100 }, (_, i) => i + 1)
+  const pages = chunk(nums, 28)
+  check('100건 / 28 = 4장', pages.length, 4)
+  check('마지막 장은 16건', pages[3].length, 16)
+  check('첫 장은 28건', pages[0].length, 28)
+  check('쪼개도 총합 보존', pages.flat().length, 100)
+  check('딱 나눠떨어지면 나머지 장 없음', chunk(Array(56).fill(0), 28).length, 2)
+  check('빈 배열 → 빈 페이지 목록', chunk([], 28).length, 0)
+  check('1건 → 1장', chunk([1], 28).length, 1)
 }
 
 console.log(`\n${'─'.repeat(50)}`)

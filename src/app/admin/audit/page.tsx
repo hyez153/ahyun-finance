@@ -8,7 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Download, Loader2, FileText } from 'lucide-react'
-import { buildAuditReport, AuditReceipt } from '@/lib/audit-report'
+import { buildAuditReport, chunk, AuditReceipt } from '@/lib/audit-report'
+
+// 명세 한 장에 담을 행 수. A4 세로에 10px 표가 대략 이만큼 들어간다.
+// 한 장에 다 넣으면 A4 한 장 높이로 압축돼 글자가 깨알이 된다.
+const ROWS_PER_PAGE = 28
 
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -104,13 +108,20 @@ export default function AuditPage() {
 
       const pages = document.querySelectorAll('[data-pdf-page]')
       const pdf = new jsPDF('p', 'mm', 'a4')
+      const maxH = 297 - 16
       for (let i = 0; i < pages.length; i++) {
         const canvas = await html2canvas(pages[i] as HTMLElement, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
-        const imgWidth = 210 - 16
-        const imgHeight = (canvas.height * imgWidth) / canvas.width
+        let imgWidth = 210 - 16
+        let imgHeight = (canvas.height * imgWidth) / canvas.width
+        // 한 장이 A4보다 길면 폭을 줄여 비율을 지킨 채 세로에 맞춘다.
+        // (예전엔 높이만 잘라 가로로 늘어나 글자가 깨알이 됐다)
+        if (imgHeight > maxH) {
+          imgWidth = (imgWidth * maxH) / imgHeight
+          imgHeight = maxH
+        }
         const imgData = canvas.toDataURL('image/jpeg', 0.92)
         if (i > 0) pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 8, 8, imgWidth, Math.min(imgHeight, 297 - 16))
+        pdf.addImage(imgData, 'JPEG', 8, 8, imgWidth, imgHeight)
       }
       pdf.save(`감사자료_${startDate}_${endDate}.pdf`)
     } catch (err) {
@@ -240,45 +251,56 @@ export default function AuditPage() {
             )}
           </div>
 
-          {/* ===== PDF 2장~: 영수증 전체 명세 ===== */}
-          {report.grandCount > 0 && (
-            <div data-pdf-page className="bg-white border-2 border-black p-6">
-              <h2 className="text-base font-black text-center tracking-[0.2em] mb-1">영 수 증 명 세</h2>
-              <p className="text-center text-xs text-slate-600 mb-4">
-                {formatDate(startDate)} ~ {formatDate(endDate)} · 총 {report.grandCount}건
-              </p>
-              <table className="border-collapse border border-black w-full text-[10px]">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-black px-1.5 py-1 text-left w-7">No.</th>
-                    <th className="border border-black px-1.5 py-1 text-left w-24 whitespace-nowrap">청구일</th>
-                    <th className="border border-black px-1.5 py-1 text-left w-24 whitespace-nowrap">사용일</th>
-                    <th className="border border-black px-1.5 py-1 text-left w-24">항목</th>
-                    <th className="border border-black px-1.5 py-1 text-left">사용처 / 적요</th>
-                    <th className="border border-black px-1.5 py-1 text-left w-16">결제자</th>
-                    <th className="border border-black px-1.5 py-1 text-right w-20">금액</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.receipts.map((r, i) => (
-                    <tr key={r.id}>
-                      <td className="border border-black px-1.5 py-0.5 text-slate-400">{i + 1}</td>
-                      <td className="border border-black px-1.5 py-0.5 whitespace-nowrap">{formatDate(r.claim_date)}</td>
-                      <td className="border border-black px-1.5 py-0.5 whitespace-nowrap">{formatDate(r.receipt_date)}</td>
-                      <td className="border border-black px-1.5 py-0.5">{r.category_name}</td>
-                      <td className="border border-black px-1.5 py-0.5">{r.vendor_name}{r.memo ? ` - ${r.memo}` : ''}</td>
-                      <td className="border border-black px-1.5 py-0.5">{r.payer_name || r.submitter_name}</td>
-                      <td className="border border-black px-1.5 py-0.5 text-right">{formatKRW(r.amount)}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-gray-100">
-                    <td className="border border-black px-1.5 py-1 font-bold text-right" colSpan={6}>합계</td>
-                    <td className="border border-black px-1.5 py-1 text-right font-bold">{formatKRW(report.grandTotal)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* ===== PDF 2장~: 영수증 전체 명세 (여러 장으로 분할) ===== */}
+          {report.grandCount > 0 && (() => {
+            const pages = chunk(report.receipts, ROWS_PER_PAGE)
+            return pages.map((rows, pageIdx) => {
+              const isLast = pageIdx === pages.length - 1
+              const startNo = pageIdx * ROWS_PER_PAGE
+              return (
+                <div key={pageIdx} data-pdf-page className="bg-white border-2 border-black p-6">
+                  <h2 className="text-base font-black text-center tracking-[0.2em] mb-1">영 수 증 명 세</h2>
+                  <p className="text-center text-xs text-slate-600 mb-4">
+                    {formatDate(startDate)} ~ {formatDate(endDate)} · 총 {report.grandCount}건
+                    {pages.length > 1 && ` · (${pageIdx + 1}/${pages.length})`}
+                  </p>
+                  <table className="border-collapse border border-black w-full text-[10px]">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="border border-black px-1.5 py-1 text-left w-7">No.</th>
+                        <th className="border border-black px-1.5 py-1 text-left w-24 whitespace-nowrap">청구일</th>
+                        <th className="border border-black px-1.5 py-1 text-left w-24 whitespace-nowrap">사용일</th>
+                        <th className="border border-black px-1.5 py-1 text-left w-24">항목</th>
+                        <th className="border border-black px-1.5 py-1 text-left">사용처 / 적요</th>
+                        <th className="border border-black px-1.5 py-1 text-left w-16">결제자</th>
+                        <th className="border border-black px-1.5 py-1 text-right w-20">금액</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={r.id}>
+                          <td className="border border-black px-1.5 py-0.5 text-slate-400">{startNo + i + 1}</td>
+                          <td className="border border-black px-1.5 py-0.5 whitespace-nowrap">{formatDate(r.claim_date)}</td>
+                          <td className="border border-black px-1.5 py-0.5 whitespace-nowrap">{formatDate(r.receipt_date)}</td>
+                          <td className="border border-black px-1.5 py-0.5">{r.category_name}</td>
+                          <td className="border border-black px-1.5 py-0.5">{r.vendor_name}{r.memo ? ` - ${r.memo}` : ''}</td>
+                          <td className="border border-black px-1.5 py-0.5">{r.payer_name || r.submitter_name}</td>
+                          <td className="border border-black px-1.5 py-0.5 text-right">{formatKRW(r.amount)}</td>
+                        </tr>
+                      ))}
+                      {/* 합계는 마지막 장에만 */}
+                      {isLast && (
+                        <tr className="bg-gray-100">
+                          <td className="border border-black px-1.5 py-1 font-bold text-right" colSpan={6}>합계</td>
+                          <td className="border border-black px-1.5 py-1 text-right font-bold">{formatKRW(report.grandTotal)}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })
+          })()}
         </>
       )}
     </div>
