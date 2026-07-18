@@ -7,7 +7,7 @@ import { formatKRW } from '@/lib/utils'
 import { getWeekLabel } from '@/lib/claim-cycle'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Receipt, CreditCard, BarChart3, AlertTriangle } from 'lucide-react'
+import { Receipt, CreditCard, BarChart3, AlertTriangle, FileSearch } from 'lucide-react'
 
 type GroupName = '목회' | '양육' | '사역' | '행사'
 interface GroupStat {
@@ -233,6 +233,7 @@ export default function AdminHome() {
           { href: '/admin/receipts', label: '영수증 전체 목록', desc: '제출된 영수증 확인 및 관리', icon: Receipt, color: 'blue' },
           { href: '/admin/claims', label: '청구 배치 관리', desc: '월별 청구 생성 및 확정', icon: CreditCard, color: 'purple' },
           { href: '/admin/budget', label: '예산 대시보드', desc: '항목별 사용액 및 잔액', icon: BarChart3, color: 'emerald' },
+          { href: '/admin/audit', label: '감사자료', desc: '기간별 누적 청구완료 내역', icon: FileSearch, color: 'amber' },
         ].map(({ href, label, desc, icon: Icon, color }) => (
           <Link key={href} href={href}>
             <Card className="hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer h-full">
