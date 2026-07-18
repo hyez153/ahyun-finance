@@ -8,6 +8,7 @@ import { getCycleDescription } from '@/lib/claim-cycle'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Receipt, List, LayoutDashboard, LogOut, Loader2 } from 'lucide-react'
+import { AnnouncementSheet } from '@/components/announcement-sheet'
 
 export default function Home() {
   const router = useRouter()
@@ -29,6 +30,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-br from-slate-50 to-slate-100">
+      <AnnouncementSheet />
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-1">
           <p className="text-xs font-medium text-slate-400 tracking-widest uppercase">아현젊은이 교회</p>
