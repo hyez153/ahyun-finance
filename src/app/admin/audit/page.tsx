@@ -251,9 +251,9 @@ export default function AuditPage() {
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="border border-black px-1.5 py-1 text-left w-7">No.</th>
-                    <th className="border border-black px-1.5 py-1 text-left w-20">청구일</th>
-                    <th className="border border-black px-1.5 py-1 text-left w-20">사용일</th>
-                    <th className="border border-black px-1.5 py-1 text-left">항목</th>
+                    <th className="border border-black px-1.5 py-1 text-left w-24 whitespace-nowrap">청구일</th>
+                    <th className="border border-black px-1.5 py-1 text-left w-24 whitespace-nowrap">사용일</th>
+                    <th className="border border-black px-1.5 py-1 text-left w-24">항목</th>
                     <th className="border border-black px-1.5 py-1 text-left">사용처 / 적요</th>
                     <th className="border border-black px-1.5 py-1 text-left w-16">결제자</th>
                     <th className="border border-black px-1.5 py-1 text-right w-20">금액</th>
@@ -263,8 +263,8 @@ export default function AuditPage() {
                   {report.receipts.map((r, i) => (
                     <tr key={r.id}>
                       <td className="border border-black px-1.5 py-0.5 text-slate-400">{i + 1}</td>
-                      <td className="border border-black px-1.5 py-0.5">{formatDate(r.claim_date)}</td>
-                      <td className="border border-black px-1.5 py-0.5">{formatDate(r.receipt_date)}</td>
+                      <td className="border border-black px-1.5 py-0.5 whitespace-nowrap">{formatDate(r.claim_date)}</td>
+                      <td className="border border-black px-1.5 py-0.5 whitespace-nowrap">{formatDate(r.receipt_date)}</td>
                       <td className="border border-black px-1.5 py-0.5">{r.category_name}</td>
                       <td className="border border-black px-1.5 py-0.5">{r.vendor_name}{r.memo ? ` - ${r.memo}` : ''}</td>
                       <td className="border border-black px-1.5 py-0.5">{r.payer_name || r.submitter_name}</td>
