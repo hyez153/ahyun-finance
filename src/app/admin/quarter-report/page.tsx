@@ -66,6 +66,23 @@ export default function QuarterReportPage() {
     return buildQuarterReport(cats, qtx, current.quartersElapsed)
   }, [cats, txns, current])
 
+  // 연초부터 해당 분기 끝까지 누적 집행 (1년예산 대비 누적 사용비율용).
+  // 1분기·상반기는 누적 = 이번 분기라 값이 같고, 2~4분기 단독 선택 시 달라진다.
+  const cumulative = useMemo(() => {
+    const cutx = txns.filter(t => txnInRange(t.transaction_date, `${YEAR}-01-01`, current.end))
+    return buildQuarterReport(cats, cutx, current.quartersElapsed)
+  }, [cats, txns, current])
+
+  function cumUsed(group: string, category?: string): number {
+    const g = cumulative.groups.find(x => x.group_name === group)
+    if (!g) return 0
+    if (!category) return g.used
+    return g.rows.find(r => r.category_name === category)?.used ?? 0
+  }
+  function cumPct(used: number, budget: number): string {
+    return budget ? `${((used / budget) * 100).toFixed(2)}%` : '0.00%'
+  }
+
   function memoOf(group: string) {
     return memos[`${quarterKey}:${group}`] ?? ''
   }
@@ -160,6 +177,12 @@ export default function QuarterReportPage() {
                 {formatKRW(report.totalUsed)} <span className="text-slate-500 font-normal">(집행률 {pct(report.useRate)})</span>
               </td>
             </tr>
+            <tr>
+              <td className="border border-black px-3 py-1.5 font-bold bg-gray-50 whitespace-nowrap">└ 연초부터 누적 집행</td>
+              <td className="border border-black px-3 py-1.5 text-right font-bold whitespace-nowrap">
+                {formatKRW(cumulative.totalUsed)} <span className="text-slate-500 font-normal">(누적 사용비율 {cumPct(cumulative.totalUsed, cumulative.totalBudget)})</span>
+              </td>
+            </tr>
           </tbody>
         </table>
 
@@ -168,11 +191,12 @@ export default function QuarterReportPage() {
           <thead>
             <tr className="bg-gray-100">
               <th className="border border-black px-2 py-1 text-left">항목</th>
-              <th className="border border-black px-2 py-1 text-right">사용금액</th>
+              <th className="border border-black px-2 py-1 text-right">이번 분기<br/>사용금액</th>
               <th className="border border-black px-2 py-1 text-right">1년 예산</th>
               <th className="border border-black px-2 py-1 text-right">분기 목표<br/>(예산÷4)</th>
               <th className="border border-black px-2 py-1 text-right">1년예산 내<br/>사용비율</th>
               <th className="border border-black px-2 py-1 text-right">분기내<br/>사용비율</th>
+              <th className="border border-black px-2 py-1 text-right bg-amber-50">연초부터 누적<br/>사용비율</th>
             </tr>
           </thead>
           <tbody>
@@ -184,6 +208,7 @@ export default function QuarterReportPage() {
                 <td className="border border-black px-2 py-1 text-right text-slate-500">{formatKRW(Math.round(g.quarterBudget))}</td>
                 <td className="border border-black px-2 py-1 text-right font-medium">{pct(g.useRate)}</td>
                 <td className="border border-black px-2 py-1 text-right font-medium">{pct(g.quarterRate)}</td>
+                <td className="border border-black px-2 py-1 text-right font-bold bg-amber-50">{cumPct(cumUsed(g.group_name), g.budget)}</td>
               </tr>
             ))}
             <tr className="bg-gray-100">
@@ -193,6 +218,7 @@ export default function QuarterReportPage() {
               <td className="border border-black px-2 py-1"></td>
               <td className="border border-black px-2 py-1 text-right font-bold">{pct(report.useRate)}</td>
               <td className="border border-black px-2 py-1"></td>
+              <td className="border border-black px-2 py-1 text-right font-bold bg-amber-50">{cumPct(cumulative.totalUsed, cumulative.totalBudget)}</td>
             </tr>
           </tbody>
         </table>
@@ -230,11 +256,12 @@ export default function QuarterReportPage() {
               <thead>
                 <tr className="bg-gray-100">
                   <th className="border border-black px-2 py-1 text-left">항목</th>
-                  <th className="border border-black px-2 py-1 text-right">사용금액</th>
+                  <th className="border border-black px-2 py-1 text-right">이번 분기<br/>사용금액</th>
                   <th className="border border-black px-2 py-1 text-right">1년 예산</th>
                   <th className="border border-black px-2 py-1 text-right">분기 목표<br/>(예산÷4)</th>
                   <th className="border border-black px-2 py-1 text-right">1년예산 내<br/>사용비율</th>
                   <th className="border border-black px-2 py-1 text-right">분기내<br/>사용비율</th>
+                  <th className="border border-black px-2 py-1 text-right bg-amber-50">연초부터 누적<br/>사용비율</th>
                 </tr>
               </thead>
               <tbody>
@@ -246,6 +273,7 @@ export default function QuarterReportPage() {
                     <td className="border border-black px-2 py-1 text-right text-slate-400">{formatKRW(Math.round(r.quarterBudget))}</td>
                     <td className="border border-black px-2 py-1 text-right">{pct(r.useRate)}</td>
                     <td className="border border-black px-2 py-1 text-right">{pct(r.quarterRate)}</td>
+                    <td className="border border-black px-2 py-1 text-right font-medium bg-amber-50">{cumPct(cumUsed(g.group_name, r.category_name), r.budget)}</td>
                   </tr>
                 ))}
                 <tr className="bg-gray-50">
@@ -255,6 +283,7 @@ export default function QuarterReportPage() {
                   <td className="border border-black px-2 py-1"></td>
                   <td className="border border-black px-2 py-1 text-right font-bold">{pct(g.useRate)}</td>
                   <td className="border border-black px-2 py-1 text-right font-bold">{pct(g.quarterRate)}</td>
+                  <td className="border border-black px-2 py-1 text-right font-bold bg-amber-50">{cumPct(cumUsed(g.group_name), g.budget)}</td>
                 </tr>
               </tbody>
             </table>
