@@ -25,6 +25,7 @@ export interface AuditReceipt {
   claim_date: string // 소속 배치의 청구일 (YYYY-MM-DD)
   group_name: string
   category_name: string
+  file_url: string // 영수증 사진 URL. '실물영수증제출'이면 이미지 없음
 }
 
 export interface CategoryReceiptResult {

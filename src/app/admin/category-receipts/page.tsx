@@ -7,7 +7,7 @@ import { formatKRW, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Download, Loader2, FileSearch } from 'lucide-react'
+import { Download, Loader2, FileSearch, Image as ImageIcon } from 'lucide-react'
 import { filterCategoryReceipts, chunk, AuditReceipt } from '@/lib/audit-report'
 import { splitCategories } from '@/lib/receipt-rules'
 
@@ -52,14 +52,14 @@ export default function CategoryReceiptsPage() {
 
         const { data: rcpt } = await supabase
           .from('receipts')
-          .select('id, budget_category_id, amount, receipt_date, vendor_name, memo, submitter_name, payer_name, claim_batch_id, budget_categories(group_name, category_name)')
+          .select('id, budget_category_id, amount, receipt_date, vendor_name, memo, submitter_name, payer_name, file_url, claim_batch_id, budget_categories(group_name, category_name)')
           .eq('is_claimed', true)
           .in('claim_batch_id', batchIds)
 
         const mapped: AuditReceipt[] = ((rcpt as unknown[]) ?? []).map((row) => {
           const r = row as {
             id: number; budget_category_id: number; amount: number; receipt_date: string
-            vendor_name: string; memo: string | null; submitter_name: string; payer_name: string | null
+            vendor_name: string; memo: string | null; submitter_name: string; payer_name: string | null; file_url: string
             claim_batch_id: number; budget_categories?: { group_name?: string; category_name?: string }
           }
           return {
@@ -70,6 +70,7 @@ export default function CategoryReceiptsPage() {
             claim_date: claimDateOf.get(r.claim_batch_id) ?? '',
             group_name: r.budget_categories?.group_name ?? '기타',
             category_name: r.budget_categories?.category_name ?? '미분류',
+            file_url: r.file_url,
           }
         })
         setReceipts(mapped)
@@ -139,6 +140,8 @@ export default function CategoryReceiptsPage() {
   }
 
   const pages = result ? chunk(result.rows, ROWS_PER_PAGE) : []
+  // 영수증 사진은 A4 한 장에 6장(2열 x 3행)씩
+  const photoPages = result ? chunk(result.rows, 6) : []
 
   return (
     <div className="space-y-6">
@@ -256,6 +259,52 @@ export default function CategoryReceiptsPage() {
               )
             })
           )}
+
+          {/* ===== 실제 영수증 사진 (페이지당 6장) ===== */}
+          {result.count > 0 && photoPages.map((rows, pageIdx) => {
+            const startNo = pageIdx * 6
+            return (
+              <div key={`photo-${pageIdx}`} data-pdf-page className="bg-white border-2 border-black p-6">
+                <h2 className="text-base font-black text-center tracking-[0.15em] mb-1">
+                  {catLabel(selectedCat?.category_name ?? '')} 영수증 사진
+                </h2>
+                <p className="text-center text-xs text-slate-600 mb-4">
+                  {formatDate(startDate)} ~ {formatDate(endDate)}
+                  {photoPages.length > 1 && ` · 사진 (${pageIdx + 1}/${photoPages.length})`}
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {rows.map((r, i) => {
+                    const isPhysical = r.file_url === '실물영수증제출'
+                    return (
+                      <div key={r.id} className="border border-slate-300 rounded overflow-hidden break-inside-avoid">
+                        <div className="relative w-full bg-slate-50" style={{ aspectRatio: '3/4' }}>
+                          {isPhysical || !r.file_url ? (
+                            <div className="absolute inset-0 border-2 border-dashed border-amber-300 bg-amber-50/80 flex flex-col items-center justify-center">
+                              <ImageIcon className="w-7 h-7 text-amber-300 mb-1.5" />
+                              <span className="text-xs text-amber-600 font-semibold">실물영수증</span>
+                            </div>
+                          ) : (
+                            <img src={r.file_url} alt={r.vendor_name} crossOrigin="anonymous"
+                              className="absolute inset-0 w-full h-full object-contain" />
+                          )}
+                        </div>
+                        <div className="px-2 py-1.5 border-t border-slate-200 text-[10px]">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-slate-700 truncate">{startNo + i + 1}. {r.vendor_name}</span>
+                            <span className="font-bold text-slate-800 shrink-0">{formatKRW(r.amount)}</span>
+                          </div>
+                          <div className="text-slate-400">
+                            청구 {formatDate(r.claim_date)} · {r.payer_name || r.submitter_name}
+                            {r.memo ? ` · ${r.memo}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
         </>
       )}
     </div>

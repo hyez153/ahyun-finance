@@ -14,7 +14,7 @@ function r(claim_date: string, group_name: string, category_name: string, amount
   return {
     id: seq, budget_category_id: 0, amount, receipt_date: claim_date, vendor_name: `가게${seq}`,
     memo: null, submitter_name: '홍길동', payer_name: null,
-    claim_date, group_name, category_name, ...extra,
+    claim_date, group_name, category_name, file_url: 'x', ...extra,
   }
 }
 

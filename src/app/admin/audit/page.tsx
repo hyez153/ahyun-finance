@@ -55,14 +55,14 @@ export default function AuditPage() {
         // 청구완료된 영수증 + 항목 정보
         const { data: rcpt } = await supabase
           .from('receipts')
-          .select('id, budget_category_id, amount, receipt_date, vendor_name, memo, submitter_name, payer_name, claim_batch_id, budget_categories(group_name, category_name)')
+          .select('id, budget_category_id, amount, receipt_date, vendor_name, memo, submitter_name, payer_name, file_url, claim_batch_id, budget_categories(group_name, category_name)')
           .eq('is_claimed', true)
           .in('claim_batch_id', batchIds)
 
         const mapped: AuditReceipt[] = ((rcpt as unknown[]) ?? []).map((row) => {
           const r = row as {
             id: number; budget_category_id: number; amount: number; receipt_date: string; vendor_name: string
-            memo: string | null; submitter_name: string; payer_name: string | null
+            memo: string | null; submitter_name: string; payer_name: string | null; file_url: string
             claim_batch_id: number
             budget_categories?: { group_name?: string; category_name?: string }
           }
@@ -78,6 +78,7 @@ export default function AuditPage() {
             claim_date: claimDateOf.get(r.claim_batch_id) ?? '',
             group_name: r.budget_categories?.group_name ?? '기타',
             category_name: r.budget_categories?.category_name ?? '미분류',
+            file_url: r.file_url,
           }
         })
         setReceipts(mapped)
